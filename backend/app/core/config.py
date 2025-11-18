@@ -13,10 +13,11 @@ class Settings(BaseSettings):
     
     # LLM Configuration
     llm_api_key: str
-    llm_provider: str = "openai"
+    llm_provider: str = "openrouter"  # "openai" or "openrouter"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     daily_token_budget: int = 100000
-    cheap_model: str = "gpt-3.5-turbo"
-    strong_model: str = "gpt-4-turbo-preview"
+    cheap_model: str = "odeepseek/deepseek-chat-v3-0324:free"  # For analysts
+    strong_model: str = "moonshotai/kimi-k2-thinking"  # For researcher, trader, risk manager
     
     # Application
     environment: str = "development"

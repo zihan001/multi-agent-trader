@@ -31,6 +31,7 @@ This system simulates a crypto trading firm where specialized AI agents analyze 
 
 - Docker and Docker Compose
 - Python 3.11+
+- Node.js 20+ (for frontend development)
 - LLM API key (OpenAI or OpenRouter)
 
 ### Setup
@@ -47,17 +48,20 @@ This system simulates a crypto trading firm where specialized AI agents analyze 
    # Edit .env and add your LLM_API_KEY
    ```
 
-3. **Start the services**
+3. **Start all services (backend + frontend + database)**
    ```bash
    docker-compose up -d
    ```
 
-4. **Access the API**
-   - API: http://localhost:8000
-   - Docs: http://localhost:8000/docs
+4. **Access the application**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
    - Health: http://localhost:8000/health
 
 ### Development Setup (Local)
+
+#### Backend
 
 ```bash
 # Create virtual environment
@@ -68,11 +72,25 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run database migrations (once implemented)
+# Run database migrations
 alembic upgrade head
 
 # Run the development server
 uvicorn app.main:app --reload
+```
+
+#### Frontend
+
+```bash
+# Install dependencies
+cd frontend
+npm install
+
+# Copy environment file
+cp .env.example .env.local
+
+# Run development server
+npm run dev
 ```
 
 ## Project Structure
@@ -89,9 +107,17 @@ multi-agent-trader/
 │   │   └── agents/      # LLM agents
 │   ├── requirements.txt
 │   └── Dockerfile
-├── docker-compose.yml    # Local development setup
-├── .env.example         # Environment template
-└── ARCHITECTURE.md      # Detailed architecture docs
+├── frontend/            # Next.js application
+│   ├── app/            # Next.js pages (Dashboard, Analysis, Portfolio, Backtest)
+│   ├── components/     # React components
+│   ├── lib/            # API client & utilities
+│   ├── types/          # TypeScript types
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml   # Production Docker setup
+├── docker-compose.dev.yml  # Development setup with hot-reload
+├── .env.example        # Environment template
+└── ARCHITECTURE.md     # Detailed architecture docs
 ```
 
 ## Architecture
@@ -140,11 +166,18 @@ MAX_POSITION_SIZE_PCT=0.10
 - [x] Phase 2: Core services (Binance, portfolio, indicators)
 - [x] Phase 3: Agent system implementation
 - [x] Phase 4: API endpoints and backtest engine
-- [ ] Phase 5: Frontend application
+- [x] Phase 5: Frontend application (Next.js with Dashboard, Analysis, Portfolio, Backtest views)
 - [ ] Phase 6: AWS deployment
 - [ ] Post-MVP: Paper trading mode for futures and spot (use Binance testnet for now)
 
 ## Technology Stack
+
+**Frontend:**
+- Next.js 14 (React framework with App Router)
+- TypeScript (type safety)
+- TailwindCSS (styling)
+- Recharts (data visualization)
+- Axios (HTTP client)
 
 **Backend:**
 - FastAPI (Python web framework)

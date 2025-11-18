@@ -1,7 +1,8 @@
+# Development Docker Compose with Hot Reload
 services:
   db:
     image: postgres:15-alpine
-    container_name: trading-db
+    container_name: trading-db-dev
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trading_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading_password}
@@ -9,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading_user}"]
       interval: 10s
@@ -20,7 +21,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: trading-backend
+    container_name: trading-backend-dev
     ports:
       - "8000:8000"
     environment:
@@ -40,21 +41,20 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: trading-frontend
+    image: node:20-alpine
+    container_name: trading-frontend-dev
+    working_dir: /app
     ports:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
       - backend
-    # For development, mount the source code
-    # volumes:
-    #   - ./frontend:/app
-    #   - /app/node_modules
-    #   - /app/.next
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: sh -c "npm install && npm run dev"
 
 volumes:
-  postgres_data:
+  postgres_data_dev:

@@ -10,7 +10,8 @@
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
+
 
 # Thumbnails
 ._*
@@ -367,3 +368,5 @@ pyrightconfig.json
 .env
 *.pem
 *.key
+
+copilot-instructions.md

@@ -16,6 +16,23 @@ from app.agents.trader import Trader
 from app.agents.risk import RiskManager
 
 
+def compress_analyst_output(full_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract only decision-relevant fields from analyst output to reduce token usage.
+    
+    Reduces typical analyst output from 400-600 tokens to ~150-200 tokens.
+    """
+    if not full_analysis:
+        return {}
+    
+    return {
+        "recommendation": full_analysis.get("recommendation") or full_analysis.get("trading_implication"),
+        "confidence": full_analysis.get("confidence", 0),
+        "key_insight": full_analysis.get("reasoning", "")[:150],  # Truncate reasoning to 150 chars
+        "top_signals": full_analysis.get("key_observations", [])[:2]  # Top 2 observations only
+    }
+
+
 class AgentPipeline:
     """
     Orchestrates the complete agent decision pipeline.
@@ -117,9 +134,9 @@ class AgentPipeline:
             research_context = {
                 "symbol": symbol,
                 "current_price": market_data.get("current_price"),
-                "technical_analysis": technical_result.get("analysis"),
-                "sentiment_analysis": sentiment_result.get("analysis"),
-                "tokenomics_analysis": tokenomics_result.get("analysis"),
+                "technical_analysis": compress_analyst_output(technical_result.get("analysis")),
+                "sentiment_analysis": compress_analyst_output(sentiment_result.get("analysis")),
+                "tokenomics_analysis": compress_analyst_output(tokenomics_result.get("analysis")),
             }
             
             research_result = self.researcher.analyze(research_context)
@@ -269,9 +286,9 @@ class AgentPipeline:
             research_context = {
                 "symbol": symbol,
                 "current_price": market_data.get("current_price"),
-                "technical_analysis": technical_result.get("analysis"),
-                "sentiment_analysis": sentiment_result.get("analysis"),
-                "tokenomics_analysis": tokenomics_result.get("analysis"),
+                "technical_analysis": compress_analyst_output(technical_result.get("analysis")),
+                "sentiment_analysis": compress_analyst_output(sentiment_result.get("analysis")),
+                "tokenomics_analysis": compress_analyst_output(tokenomics_result.get("analysis")),
             }
             
             research_result = await self.researcher.aanalyze(research_context)

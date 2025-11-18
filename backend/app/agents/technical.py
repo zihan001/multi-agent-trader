@@ -45,15 +45,12 @@ class TechnicalAnalyst(AnalystAgent):
         indicators = context.get("indicators", {})
         candles = context.get("candles", [])
         
-        # Format candle data (last 10 for context)
-        recent_candles = candles[-10:] if len(candles) > 10 else candles
-        candle_summary = []
-        for candle in recent_candles:
-            candle_summary.append(
-                f"Open: {candle.get('open')}, High: {candle.get('high')}, "
-                f"Low: {candle.get('low')}, Close: {candle.get('close')}, "
-                f"Volume: {candle.get('volume')}"
-            )
+        # Format candle data (last 5 for context, compact format)
+        recent_candles = candles[-5:] if len(candles) > 5 else candles
+        candle_summary = [
+            f"{candle.get('close')},{candle.get('volume')}"
+            for candle in recent_candles
+        ]
         
         system_prompt = f"""You are an expert technical analyst specializing in cryptocurrency trading.
 
@@ -74,31 +71,11 @@ CURRENT PRICE: ${current_price:,.2f}
 TECHNICAL INDICATORS:
 {json.dumps(indicators, indent=2)}
 
-RECENT PRICE ACTION (last 10 candles):
-{chr(10).join(candle_summary)}
+RECENT CANDLES (close,volume): {', '.join(candle_summary)}
 
-Provide your analysis in JSON format with the following structure:
-{{
-    "trend": "bullish|bearish|neutral",
-    "strength": "strong|moderate|weak",
-    "key_levels": {{
-        "support": [list of support prices],
-        "resistance": [list of resistance prices]
-    }},
-    "indicators_summary": {{
-        "rsi": "overbought|oversold|neutral with value",
-        "macd": "bullish|bearish|neutral signal",
-        "emas": "price above|below|between EMAs"
-    }},
-    "momentum": "increasing|decreasing|stable",
-    "volume_analysis": "high|normal|low volume, trend confirmation",
-    "key_observations": ["observation 1", "observation 2", ...],
-    "recommendation": "buy|sell|hold",
-    "confidence": 0-100,
-    "reasoning": "brief explanation of your analysis"
-}}
+Return JSON with fields: trend, strength, key_levels (support[], resistance[]), indicators_summary (rsi, macd, emas), momentum, volume_analysis, key_observations[], recommendation, confidence (0-100), reasoning.
 
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -116,6 +93,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured technical analysis
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             analysis = json.loads(response)
             

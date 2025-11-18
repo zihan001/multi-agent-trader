@@ -72,31 +72,11 @@ CURRENT PRICE: ${current_price:,.2f}
 24H CHANGE: {price_change_24h:+.2f}%
 
 SENTIMENT DATA:
-{json.dumps(sentiment_data, indent=2)}
+{json.dumps(sentiment_data)}
 
-Provide your analysis in JSON format with the following structure:
-{{
-    "overall_sentiment": "extremely_bullish|bullish|neutral|bearish|extremely_bearish",
-    "sentiment_score": -100 to 100 (negative = bearish, positive = bullish),
-    "sentiment_strength": "strong|moderate|weak",
-    "key_factors": {{
-        "social_media": "analysis of social sentiment",
-        "news_coverage": "analysis of news tone",
-        "fear_greed": "analysis of fear/greed levels",
-        "volume_interest": "analysis of trading activity"
-    }},
-    "contrarian_signals": ["any extreme sentiment signals that may indicate reversal"],
-    "crowd_psychology": "description of current market psychology",
-    "sentiment_trend": "improving|deteriorating|stable",
-    "key_observations": ["observation 1", "observation 2", ...],
-    "trading_implication": "buy|sell|hold",
-    "confidence": 0-100,
-    "reasoning": "brief explanation of sentiment analysis"
-}}
+Return JSON with fields: overall_sentiment, sentiment_score (-100 to 100), sentiment_strength, key_factors (social_media, news_coverage, fear_greed, volume_interest), contrarian_signals[], crowd_psychology, sentiment_trend, key_observations[], trading_implication, confidence (0-100), reasoning. Alert for extreme sentiment indicating reversals.
 
-Note: Be especially alert for extreme sentiment that could indicate market tops or bottoms.
-
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -114,6 +94,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured sentiment analysis
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             analysis = json.loads(response)
             

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     llm_provider: str = "openrouter"  # "openai" or "openrouter"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     daily_token_budget: int = 100000
-    cheap_model: str = "odeepseek/deepseek-chat-v3-0324:free"  # For analysts
-    strong_model: str = "moonshotai/kimi-k2-thinking"  # For researcher, trader, risk manager
+    cheap_model: str = "deepseek/deepseek-chat"  # For analysts
+    strong_model: str = "deepseek/deepseek-chat"  # For researcher, trader, risk manager
     
     # Application
     environment: str = "development"

@@ -80,41 +80,11 @@ MARKET CAP: ${market_cap:,.0f}
 VOLUME/MCAP RATIO: {volume_mcap_ratio:.2f}%
 
 TOKEN DATA:
-{json.dumps(token_data, indent=2)}
+{json.dumps(token_data)}
 
-Provide your analysis in JSON format with the following structure:
-{{
-    "fundamental_rating": "strong|good|fair|weak|poor",
-    "value_assessment": "overvalued|fairly_valued|undervalued",
-    "supply_analysis": {{
-        "inflation_rate": "high|moderate|low|deflationary",
-        "supply_distribution": "concentrated|balanced|distributed",
-        "unlock_schedule": "concerns about upcoming unlocks or emissions"
-    }},
-    "liquidity_analysis": {{
-        "market_cap_size": "large|mid|small cap",
-        "trading_liquidity": "high|moderate|low",
-        "volume_quality": "assessment of volume/mcap ratio"
-    }},
-    "utility_assessment": {{
-        "use_cases": "description of token utility",
-        "network_activity": "high|moderate|low on-chain activity",
-        "real_world_adoption": "assessment of actual usage"
-    }},
-    "competitive_position": "market position vs competitors",
-    "strengths": ["strength 1", "strength 2", ...],
-    "weaknesses": ["weakness 1", "weakness 2", ...],
-    "key_risks": ["risk 1", "risk 2", ...],
-    "key_observations": ["observation 1", "observation 2", ...],
-    "long_term_outlook": "bullish|neutral|bearish",
-    "trading_implication": "accumulate|buy|hold|reduce|sell",
-    "confidence": 0-100,
-    "reasoning": "brief explanation of fundamental analysis"
-}}
+Return JSON with fields: fundamental_rating, value_assessment, supply_analysis (inflation_rate, supply_distribution, unlock_schedule), liquidity_analysis (market_cap_size, trading_liquidity, volume_quality), utility_assessment (use_cases, network_activity, real_world_adoption), competitive_position, strengths[], weaknesses[], key_risks[], key_observations[], long_term_outlook, trading_implication, confidence (0-100), reasoning.
 
-Consider both quantitative metrics and qualitative factors.
-
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -132,6 +102,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured tokenomics analysis
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             analysis = json.loads(response)
             

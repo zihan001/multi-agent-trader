@@ -68,13 +68,14 @@ class AgentLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    run_id = Column(String(50), nullable=False, index=True)
-    decision_id = Column(String(50), nullable=True, index=True)
     agent_name = Column(String(50), nullable=False, index=True)
-    symbol = Column(String(20), nullable=True)
-    model_name = Column(String(50), nullable=False)
-    tokens_input = Column(Integer, nullable=False)
-    tokens_output = Column(Integer, nullable=False)
-    cost_estimate = Column(Float, nullable=False)
-    input_summary = Column(JSON, nullable=True)
-    output_summary = Column(JSON, nullable=True)
+    model = Column(String(100), nullable=False)  # Model name (can be long for OpenRouter)
+    input_data = Column(Text, nullable=True)  # Full input (JSON string)
+    output_data = Column(Text, nullable=True)  # Full output or error message
+    tokens_used = Column(Integer, default=0)  # Total tokens
+    input_tokens = Column(Integer, nullable=True)  # Input tokens
+    output_tokens = Column(Integer, nullable=True)  # Output tokens
+    cost = Column(Float, default=0.0)  # Cost in USD
+    latency_seconds = Column(Float, nullable=True)  # API call latency
+    run_id = Column(String(50), nullable=True, index=True)  # Optional grouping
+    symbol = Column(String(20), nullable=True, index=True)  # Optional symbol context

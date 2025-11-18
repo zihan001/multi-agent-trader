@@ -20,11 +20,40 @@ function AnalysisContent() {
       setLoading(true);
       setError(null);
       try {
+        console.log(`[Analysis] Starting analysis for ${symbol}`);
         const data = await runAnalysis({ symbol, mode: 'live' });
+        console.log('[Analysis] Response received:', data);
+        console.log('[Analysis] final_decision:', data.final_decision);
+        console.log('[Analysis] agents:', data.agents);
         setAnalysis(data);
-      } catch (err) {
-        setError('Failed to run analysis. Please try again.');
-        console.error(err);
+      } catch (err: any) {
+        console.error('[Analysis] Error caught:', err);
+        console.error('[Analysis] Error response:', err.response);
+        console.error('[Analysis] Error message:', err.message);
+        
+        // Handle specific error types based on HTTP status or message
+        if (err.response) {
+          const status = err.response.status;
+          const detail = err.response.data?.detail || 'Unknown error';
+          
+          if (status === 429) {
+            if (detail.includes('budget')) {
+              setError('⚠️ Daily LLM budget exceeded. The system has reached its token usage limit. Please try again tomorrow.');
+            } else {
+              setError('⏳ Rate limit exceeded. The AI service is receiving too many requests. Please wait a moment and try again.');
+            }
+          } else if (status === 504) {
+            setError('⏱️ Analysis timed out. The AI service may be experiencing high load. Please try again in a few moments.');
+          } else if (status === 503) {
+            setError('🔧 AI service unavailable. Please contact support if this persists.');
+          } else {
+            setError(`❌ Analysis failed: ${detail}`);
+          }
+        } else if (err.message) {
+          setError(`❌ Network error: ${err.message}. Please check your connection.`);
+        } else {
+          setError('❌ Failed to run analysis. Please try again.');
+        }
       } finally {
         setLoading(false);
       }
@@ -91,6 +120,17 @@ function AnalysisContent() {
     return null;
   }
 
+  console.log('[Analysis Render] analysis object:', analysis);
+  console.log('[Analysis Render] final_decision:', analysis.final_decision);
+  console.log('[Analysis Render] errors:', analysis.errors);
+
+  // Check if analysis completed but has errors or missing final decision
+  const hasErrors = analysis.errors && analysis.errors.length > 0;
+  const hasFinalDecision = analysis.final_decision && analysis.final_decision.action;
+  
+  console.log('[Analysis Render] hasErrors:', hasErrors);
+  console.log('[Analysis Render] hasFinalDecision:', hasFinalDecision);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -106,51 +146,80 @@ function AnalysisContent() {
         <p className="text-gray-400">{symbol}</p>
       </div>
 
+      {/* Error Display */}
+      {hasErrors && (
+        <div className="bg-red-900/20 border border-red-500 text-red-400 px-6 py-4 rounded-lg mb-8">
+          <p className="font-semibold mb-2">⚠️ Analysis Completed with Errors</p>
+          <ul className="list-disc list-inside space-y-1">
+            {analysis.errors?.map((error: any, idx: number) => (
+              <li key={idx}>
+                <span className="font-medium">{error.type}:</span> {error.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Final Decision - Prominent Display */}
-      <div className={`rounded-lg p-6 border-2 mb-8 ${getActionColor(analysis.final_decision.action)}`}>
+      {hasFinalDecision ? (
+        <div className={`rounded-lg p-6 border-2 mb-8 ${getActionColor(analysis.final_decision!.action)}`}>
         <div className="flex items-center gap-4 mb-4">
-          {getActionIcon(analysis.final_decision.action)}
+          {getActionIcon(analysis.final_decision!.action)}
           <div>
-            <h2 className="text-2xl font-bold">Final Decision: {analysis.final_decision.action}</h2>
+            <h2 className="text-2xl font-bold">Final Decision: {analysis.final_decision!.action}</h2>
             <p className="text-sm opacity-80">
-              {analysis.final_decision.approved ? 'Approved by Risk Manager' : 'Not Approved'}
+              {analysis.final_decision!.approved ? 'Approved by Risk Manager' : 'Not Approved'}
             </p>
           </div>
         </div>
-        {analysis.final_decision.quantity && (
+        {analysis.final_decision!.quantity && (
           <div className="mt-4 grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm opacity-80">Quantity</p>
-              <p className="font-semibold">{analysis.final_decision.quantity.toFixed(6)}</p>
+              <p className="font-semibold">{analysis.final_decision!.quantity!.toFixed(6)}</p>
             </div>
             <div>
               <p className="text-sm opacity-80">Price</p>
-              <p className="font-semibold">${analysis.final_decision.price?.toFixed(2)}</p>
+              <p className="font-semibold">${analysis.final_decision!.price?.toFixed(2)}</p>
             </div>
           </div>
         )}
       </div>
+      ) : (
+        <div className="rounded-lg p-6 border-2 mb-8 bg-yellow-900/20 border-yellow-500 text-yellow-400">
+          <div className="flex items-center gap-4">
+            <AlertCircle className="w-6 h-6" />
+            <div>
+              <h2 className="text-2xl font-bold">No Final Decision</h2>
+              <p className="text-sm opacity-80 mt-1">
+                The analysis completed but couldn't generate a trading decision. This may be due to rate limits or incomplete agent responses.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agent Analysis Cards */}
       <div className="space-y-6">
         {/* Technical Analyst */}
+        {analysis.agents?.technical?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-xl font-semibold text-white mb-4">📊 Technical Analyst</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-gray-400 text-sm">Trend</p>
-              <p className="text-white font-medium">{analysis.technical.trend}</p>
+              <p className="text-white font-medium">{analysis.agents.technical.analysis.trend || 'N/A'}</p>
             </div>
             <div>
               <p className="text-gray-400 text-sm">Momentum</p>
-              <p className="text-white font-medium">{analysis.technical.momentum}</p>
+              <p className="text-white font-medium">{analysis.agents.technical.analysis.momentum || 'N/A'}</p>
             </div>
           </div>
-          {analysis.technical.signals && analysis.technical.signals.length > 0 && (
+          {analysis.agents.technical.analysis.signals && analysis.agents.technical.analysis.signals.length > 0 && (
             <div className="mb-4">
               <p className="text-gray-400 text-sm mb-2">Signals</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.technical.signals.map((signal, idx) => (
+                {analysis.agents.technical.analysis.signals.map((signal, idx) => (
                   <li key={idx}>{signal}</li>
                 ))}
               </ul>
@@ -158,163 +227,176 @@ function AnalysisContent() {
           )}
           <div>
             <p className="text-gray-400 text-sm mb-2">Reasoning</p>
-            <p className="text-gray-300">{analysis.technical.reasoning}</p>
+            <p className="text-gray-300">{analysis.agents.technical.analysis.reasoning || 'No reasoning provided'}</p>
           </div>
         </div>
+        )}
 
         {/* Sentiment Analyst */}
+        {analysis.agents?.sentiment?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-xl font-semibold text-white mb-4">📰 Sentiment Analyst</h3>
           <div className="mb-4">
             <p className="text-gray-400 text-sm">Sentiment</p>
-            <p className="text-white font-medium capitalize">{analysis.sentiment.sentiment}</p>
+            <p className="text-white font-medium capitalize">{analysis.agents.sentiment.analysis.sentiment}</p>
           </div>
-          {analysis.sentiment.narrative_points && analysis.sentiment.narrative_points.length > 0 && (
+          {analysis.agents.sentiment.analysis.narrative_points && analysis.agents.sentiment.analysis.narrative_points.length > 0 && (
             <div>
               <p className="text-gray-400 text-sm mb-2">Key Points</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.sentiment.narrative_points.map((point, idx) => (
+                {analysis.agents.sentiment.analysis.narrative_points.map((point, idx) => (
                   <li key={idx}>{point}</li>
                 ))}
               </ul>
             </div>
           )}
         </div>
+        )}
 
         {/* Tokenomics Analyst */}
+        {analysis.agents?.tokenomics?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-xl font-semibold text-white mb-4">🪙 Tokenomics Analyst</h3>
           <div className="mb-4">
             <p className="text-gray-400 text-sm">Outlook</p>
-            <p className="text-white font-medium capitalize">{analysis.tokenomics.outlook}</p>
+            <p className="text-white font-medium capitalize">{analysis.agents.tokenomics.analysis.outlook}</p>
           </div>
-          {analysis.tokenomics.key_points && analysis.tokenomics.key_points.length > 0 && (
+          {analysis.agents.tokenomics.analysis.key_points && analysis.agents.tokenomics.analysis.key_points.length > 0 && (
             <div>
               <p className="text-gray-400 text-sm mb-2">Key Points</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.tokenomics.key_points.map((point, idx) => (
+                {analysis.agents.tokenomics.analysis.key_points.map((point, idx) => (
                   <li key={idx}>{point}</li>
                 ))}
               </ul>
             </div>
           )}
         </div>
+        )}
 
         {/* Researcher */}
+        {analysis.agents?.researcher?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-blue-700">
           <h3 className="text-xl font-semibold text-white mb-4">🔬 Researcher Synthesis</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-gray-400 text-sm">Thesis</p>
-              <p className="text-white font-medium capitalize">{analysis.researcher.thesis}</p>
+              <p className="text-white font-medium capitalize">{analysis.agents.researcher.analysis.thesis}</p>
             </div>
             <div>
               <p className="text-gray-400 text-sm">Confidence</p>
-              <p className="text-white font-medium">{(analysis.researcher.confidence * 100).toFixed(0)}%</p>
+              <p className="text-white font-medium">{(analysis.agents.researcher.analysis.confidence * 100).toFixed(0)}%</p>
             </div>
           </div>
           <div className="mb-4">
             <p className="text-gray-400 text-sm mb-2">Top Risks</p>
             <ul className="list-disc list-inside text-gray-300 space-y-1">
-              {analysis.researcher.top_risks.map((risk, idx) => (
+              {analysis.agents.researcher.analysis.top_risks.map((risk, idx) => (
                 <li key={idx}>{risk}</li>
               ))}
             </ul>
           </div>
           <div>
             <p className="text-gray-400 text-sm mb-2">Justification</p>
-            <p className="text-gray-300">{analysis.researcher.justification}</p>
+            <p className="text-gray-300">{analysis.agents.researcher.analysis.justification}</p>
           </div>
         </div>
+        )}
 
         {/* Trader */}
+        {analysis.agents?.trader?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-green-700">
           <h3 className="text-xl font-semibold text-white mb-4">💼 Trader Decision</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <p className="text-gray-400 text-sm">Action</p>
-              <p className="text-white font-medium">{analysis.trader.action}</p>
+              <p className="text-white font-medium">{analysis.agents.trader.analysis.action}</p>
             </div>
             <div>
               <p className="text-gray-400 text-sm">Position Size</p>
-              <p className="text-white font-medium">{analysis.trader.position_size_pct}%</p>
+              <p className="text-white font-medium">{analysis.agents.trader.analysis.position_size_pct}%</p>
             </div>
-            {analysis.trader.stop_loss_pct && (
+            {analysis.agents.trader.analysis.stop_loss_pct && (
               <div>
                 <p className="text-gray-400 text-sm">Stop Loss</p>
-                <p className="text-white font-medium">{analysis.trader.stop_loss_pct}%</p>
+                <p className="text-white font-medium">{analysis.agents.trader.analysis.stop_loss_pct}%</p>
               </div>
             )}
           </div>
           <div>
             <p className="text-gray-400 text-sm mb-2">Reasoning</p>
             <ul className="list-disc list-inside text-gray-300 space-y-1">
-              {analysis.trader.reasoning.map((reason, idx) => (
+              {analysis.agents.trader.analysis.reasoning.map((reason, idx) => (
                 <li key={idx}>{reason}</li>
               ))}
             </ul>
           </div>
         </div>
+        )}
 
         {/* Risk Manager */}
+        {analysis.agents?.risk_manager?.analysis && (
         <div className="bg-gray-800 rounded-lg p-6 border border-yellow-700">
           <h3 className="text-xl font-semibold text-white mb-4">🛡️ Risk Manager</h3>
           <div className="mb-4">
             <p className="text-gray-400 text-sm">Decision</p>
             <div className="flex items-center gap-2 mt-1">
-              {analysis.risk_manager.decision === 'APPROVE' ? (
+              {analysis.agents.risk_manager.analysis.decision === 'APPROVE' ? (
                 <CheckCircle className="w-5 h-5 text-green-500" />
-              ) : analysis.risk_manager.decision === 'REJECT' ? (
+              ) : analysis.agents.risk_manager.analysis.decision === 'REJECT' ? (
                 <XCircle className="w-5 h-5 text-red-500" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-yellow-500" />
               )}
-              <p className="text-white font-medium">{analysis.risk_manager.decision}</p>
+              <p className="text-white font-medium">{analysis.agents.risk_manager.analysis.decision}</p>
             </div>
           </div>
-          {analysis.risk_manager.adjusted_size_pct && (
+          {analysis.agents.risk_manager.analysis.adjusted_size_pct && (
             <div className="mb-4">
               <p className="text-gray-400 text-sm">Adjusted Size</p>
-              <p className="text-white font-medium">{analysis.risk_manager.adjusted_size_pct}%</p>
+              <p className="text-white font-medium">{analysis.agents.risk_manager.analysis.adjusted_size_pct}%</p>
             </div>
           )}
           <div>
             <p className="text-gray-400 text-sm mb-2">Explanation</p>
-            <p className="text-gray-300">{analysis.risk_manager.explanation}</p>
+            <p className="text-gray-300">{analysis.agents.risk_manager.analysis.explanation}</p>
           </div>
         </div>
+        )}
       </div>
 
       {/* Portfolio Snapshot */}
+      {analysis.portfolio_snapshot && (
       <div className="mt-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-xl font-semibold text-white mb-4">Portfolio Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-gray-400 text-sm">Cash Balance</p>
             <p className="text-white font-semibold">
-              ${analysis.portfolio_snapshot.cash_balance.toFixed(2)}
+              ${analysis.portfolio_snapshot.cash_balance?.toFixed(2) || '0.00'}
             </p>
           </div>
           <div>
             <p className="text-gray-400 text-sm">Total Equity</p>
             <p className="text-white font-semibold">
-              ${analysis.portfolio_snapshot.total_equity.toFixed(2)}
+              ${analysis.portfolio_snapshot.total_equity?.toFixed(2) || '0.00'}
             </p>
           </div>
           <div>
             <p className="text-gray-400 text-sm">Unrealized PnL</p>
-            <p className={`font-semibold ${analysis.portfolio_snapshot.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ${analysis.portfolio_snapshot.unrealized_pnl.toFixed(2)}
+            <p className={`font-semibold ${(analysis.portfolio_snapshot.unrealized_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              ${analysis.portfolio_snapshot.unrealized_pnl?.toFixed(2) || '0.00'}
             </p>
           </div>
           <div>
             <p className="text-gray-400 text-sm">Total Return</p>
-            <p className={`font-semibold ${analysis.portfolio_snapshot.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {analysis.portfolio_snapshot.total_return_pct.toFixed(2)}%
+            <p className={`font-semibold ${(analysis.portfolio_snapshot.total_return_pct || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {analysis.portfolio_snapshot.total_return_pct?.toFixed(2) || '0.00'}%
             </p>
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

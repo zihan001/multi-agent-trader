@@ -90,14 +90,23 @@ export interface AnalysisRequest {
 }
 
 export interface AnalysisResponse {
-  technical: TechnicalAnalysis;
-  sentiment: SentimentAnalysis;
-  tokenomics: TokenomicsAnalysis;
-  researcher: ResearcherThesis;
-  trader: TraderDecision;
-  risk_manager: RiskManagerDecision;
-  final_decision: FinalDecision;
-  portfolio_snapshot: PortfolioSnapshot;
+  run_id: string;
+  symbol: string;
+  timestamp: string;
+  status: string;
+  agents: {
+    technical?: { analysis: TechnicalAnalysis; metadata?: any };
+    sentiment?: { analysis: SentimentAnalysis; metadata?: any };
+    tokenomics?: { analysis: TokenomicsAnalysis; metadata?: any };
+    researcher?: { analysis: ResearcherThesis; metadata?: any };
+    trader?: { analysis: TraderDecision; metadata?: any };
+    risk_manager?: { analysis: RiskManagerDecision; metadata?: any };
+  };
+  final_decision: FinalDecision | null;
+  total_cost: number;
+  total_tokens: number;
+  portfolio_snapshot?: PortfolioSnapshot;
+  errors?: Array<{ type: string; message: string }>;
 }
 
 // Portfolio types

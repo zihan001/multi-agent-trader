@@ -190,9 +190,28 @@ async def run_analysis(
     except HTTPException:
         raise
     except Exception as e:
+        from app.agents.llm_client import BudgetExceededError
+        
+        # Handle specific error types
+        error_detail = str(e)
+        status_code = 500
+        
+        if isinstance(e, BudgetExceededError):
+            status_code = 429
+            error_detail = f"Daily LLM token budget exceeded. {str(e)} Please try again tomorrow or contact admin to increase budget."
+        elif "rate" in error_detail.lower() and "limit" in error_detail.lower():
+            status_code = 429
+            error_detail = f"Rate limit exceeded from LLM provider. Please wait a moment and try again. Details: {error_detail}"
+        elif "timeout" in error_detail.lower():
+            status_code = 504
+            error_detail = f"Analysis timed out. The LLM provider may be experiencing high load. Please try again. Details: {error_detail}"
+        elif "authentication" in error_detail.lower() or "api key" in error_detail.lower():
+            status_code = 503
+            error_detail = "LLM service authentication failed. Please contact administrator."
+        
         raise HTTPException(
-            status_code=500,
-            detail=f"Analysis failed: {str(e)}"
+            status_code=status_code,
+            detail=error_detail
         )
 
 

@@ -172,7 +172,7 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         response_format: Optional[Dict[str, str]] = None,
-        max_retries: int = 3,
+        max_retries: int = 5,
     ) -> Dict[str, Any]:
         """
         Make a synchronous LLM API call with retry logic.
@@ -273,9 +273,18 @@ class LLMClient:
                 
             except Exception as e:
                 last_exception = e
+                error_str = str(e).lower()
+                
+                # Check if it's a rate limit error - wait longer
+                is_rate_limit = any(keyword in error_str for keyword in ['rate', 'limit', '429', 'quota'])
+                
                 if attempt < max_retries - 1:
-                    # Exponential backoff
-                    wait_time = 2 ** attempt
+                    # Exponential backoff with longer waits for rate limits
+                    if is_rate_limit:
+                        wait_time = (2 ** attempt) * 5  # 5x longer for rate limits
+                        print(f"Rate limit detected, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    else:
+                        wait_time = 2 ** attempt
                     time.sleep(wait_time)
                 else:
                     # Log failed attempt
@@ -292,9 +301,15 @@ class LLMClient:
                     self.db.add(log_entry)
                     self.db.commit()
                     
-                    raise Exception(
-                        f"LLM call failed after {max_retries} attempts: {str(e)}"
-                    ) from last_exception
+                    # Provide more specific error message
+                    if is_rate_limit:
+                        raise Exception(
+                            f"Rate limit exceeded after {max_retries} retries. Please wait and try again. Original error: {str(e)}"
+                        ) from last_exception
+                    else:
+                        raise Exception(
+                            f"LLM call failed after {max_retries} attempts: {str(e)}"
+                        ) from last_exception
     
     async def acall(
         self,
@@ -304,7 +319,7 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         response_format: Optional[Dict[str, str]] = None,
-        max_retries: int = 3,
+        max_retries: int = 5,
     ) -> Dict[str, Any]:
         """
         Make an asynchronous LLM API call with retry logic.
@@ -405,9 +420,18 @@ class LLMClient:
                 
             except Exception as e:
                 last_exception = e
+                error_str = str(e).lower()
+                
+                # Check if it's a rate limit error - wait longer
+                is_rate_limit = any(keyword in error_str for keyword in ['rate', 'limit', '429', 'quota'])
+                
                 if attempt < max_retries - 1:
-                    # Exponential backoff
-                    wait_time = 2 ** attempt
+                    # Exponential backoff with longer waits for rate limits
+                    if is_rate_limit:
+                        wait_time = (2 ** attempt) * 5  # 5x longer for rate limits
+                        print(f"Rate limit detected, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    else:
+                        wait_time = 2 ** attempt
                     await asyncio.sleep(wait_time)
                 else:
                     # Log failed attempt
@@ -424,6 +448,12 @@ class LLMClient:
                     self.db.add(log_entry)
                     self.db.commit()
                     
-                    raise Exception(
-                        f"LLM call failed after {max_retries} attempts: {str(e)}"
-                    ) from last_exception
+                    # Provide more specific error message
+                    if is_rate_limit:
+                        raise Exception(
+                            f"Rate limit exceeded after {max_retries} retries. Please wait and try again. Original error: {str(e)}"
+                        ) from last_exception
+                    else:
+                        raise Exception(
+                            f"LLM call failed after {max_retries} attempts: {str(e)}"
+                        ) from last_exception

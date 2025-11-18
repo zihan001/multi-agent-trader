@@ -72,54 +72,9 @@ PORTFOLIO INFORMATION:
 
 AVAILABLE CASH: ${available_cash:,.2f}
 
-Provide your trade proposal in JSON format with the following structure:
-{{
-    "action": "buy|sell|hold|close",
-    "urgency": "immediate|soon|wait|no_rush",
-    "trade_rationale": "why this trade makes sense now",
-    "entry_strategy": {{
-        "recommended_price": price to enter (or null for market order),
-        "price_range": {{
-            "min": minimum acceptable entry,
-            "max": maximum acceptable entry
-        }},
-        "order_type": "market|limit|stop_limit",
-        "timing": "immediate|wait_for_dip|wait_for_breakout"
-    }},
-    "position_sizing": {{
-        "recommended_size_usd": dollar amount to invest,
-        "recommended_size_pct": percentage of available cash,
-        "rationale": "why this size is appropriate"
-    }},
-    "exit_strategy": {{
-        "take_profit_levels": [
-            {{"price": target1, "size_pct": percentage_to_sell, "reasoning": "why this level"}},
-            {{"price": target2, "size_pct": percentage_to_sell, "reasoning": "why this level"}}
-        ],
-        "stop_loss": {{
-            "price": stop_loss_price,
-            "reasoning": "why this level"
-        }},
-        "trailing_stop": {{
-            "enabled": true|false,
-            "percentage": percentage_below_peak
-        }}
-    }},
-    "risk_assessment": {{
-        "max_loss_usd": maximum potential loss,
-        "max_loss_pct": percentage of position,
-        "reward_risk_ratio": expected_gain / max_loss,
-        "key_risks": ["risk 1", "risk 2", ...]
-    }},
-    "execution_notes": "any special considerations for execution",
-    "time_horizon": "scalp|day|swing|position",
-    "confidence": 0-100,
-    "reasoning": "detailed explanation of trade proposal"
-}}
+Return JSON with fields: action, urgency, trade_rationale, entry_strategy (recommended_price, price_range, order_type, timing), position_sizing (recommended_size_usd, recommended_size_pct, rationale), exit_strategy (take_profit_levels[], stop_loss, trailing_stop), risk_assessment (max_loss_usd, max_loss_pct, reward_risk_ratio, key_risks[]), execution_notes, time_horizon, confidence (0-100), reasoning.
 
-If the recommendation is "hold" or "no trade", explain why and what conditions would trigger a trade.
-
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -137,6 +92,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured trade proposal
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             proposal = json.loads(response)
             

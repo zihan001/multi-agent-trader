@@ -151,19 +151,21 @@ async def run_analysis(
             run_id=None,  # Auto-generate
         )
         
-        # Execute approved trade if action is not HOLD
+        # Execute approved trade if action is BUY or SELL
         final_decision = result.get("final_decision")
         
-        if final_decision and final_decision.get("action") != "HOLD":
+        if final_decision and final_decision.get("action") in ["buy", "sell", "BUY", "SELL"]:
             try:
+                # Normalize action to uppercase
+                action = final_decision["action"].upper()
+                
                 portfolio_manager.execute_trade(
                     symbol=symbol,
-                    side=final_decision["action"],
+                    side=action,
                     quantity=final_decision.get("quantity", 0),
                     price=current_price,
-                    run_id=result["run_id"],
                 )
-                print(f"Executed trade: {final_decision['action']} {symbol}")
+                print(f"Executed trade: {action} {symbol}")
             except Exception as trade_error:
                 print(f"Error executing trade: {trade_error}")
                 result["errors"].append({

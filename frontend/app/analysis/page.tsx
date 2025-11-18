@@ -151,7 +151,7 @@ function AnalysisContent() {
         <div className="bg-red-900/20 border border-red-500 text-red-400 px-6 py-4 rounded-lg mb-8">
           <p className="font-semibold mb-2">⚠️ Analysis Completed with Errors</p>
           <ul className="list-disc list-inside space-y-1">
-            {analysis.errors?.map((error: any, idx: number) => (
+            {analysis.errors && Array.isArray(analysis.errors) && analysis.errors.map((error: any, idx: number) => (
               <li key={idx}>
                 <span className="font-medium">{error.type}:</span> {error.message}
               </li>
@@ -215,7 +215,7 @@ function AnalysisContent() {
               <p className="text-white font-medium">{analysis.agents.technical.analysis.momentum || 'N/A'}</p>
             </div>
           </div>
-          {analysis.agents.technical.analysis.signals && analysis.agents.technical.analysis.signals.length > 0 && (
+          {analysis.agents.technical.analysis.signals && Array.isArray(analysis.agents.technical.analysis.signals) && analysis.agents.technical.analysis.signals.length > 0 && (
             <div className="mb-4">
               <p className="text-gray-400 text-sm mb-2">Signals</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
@@ -240,7 +240,7 @@ function AnalysisContent() {
             <p className="text-gray-400 text-sm">Sentiment</p>
             <p className="text-white font-medium capitalize">{analysis.agents.sentiment.analysis.sentiment}</p>
           </div>
-          {analysis.agents.sentiment.analysis.narrative_points && analysis.agents.sentiment.analysis.narrative_points.length > 0 && (
+          {analysis.agents.sentiment.analysis.narrative_points && Array.isArray(analysis.agents.sentiment.analysis.narrative_points) && analysis.agents.sentiment.analysis.narrative_points.length > 0 && (
             <div>
               <p className="text-gray-400 text-sm mb-2">Key Points</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
@@ -261,7 +261,7 @@ function AnalysisContent() {
             <p className="text-gray-400 text-sm">Outlook</p>
             <p className="text-white font-medium capitalize">{analysis.agents.tokenomics.analysis.outlook}</p>
           </div>
-          {analysis.agents.tokenomics.analysis.key_points && analysis.agents.tokenomics.analysis.key_points.length > 0 && (
+          {analysis.agents.tokenomics.analysis.key_points && Array.isArray(analysis.agents.tokenomics.analysis.key_points) && analysis.agents.tokenomics.analysis.key_points.length > 0 && (
             <div>
               <p className="text-gray-400 text-sm mb-2">Key Points</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1">
@@ -288,6 +288,7 @@ function AnalysisContent() {
               <p className="text-white font-medium">{(analysis.agents.researcher.analysis.confidence * 100).toFixed(0)}%</p>
             </div>
           </div>
+          {analysis.agents.researcher.analysis.top_risks && Array.isArray(analysis.agents.researcher.analysis.top_risks) && (
           <div className="mb-4">
             <p className="text-gray-400 text-sm mb-2">Top Risks</p>
             <ul className="list-disc list-inside text-gray-300 space-y-1">
@@ -296,6 +297,7 @@ function AnalysisContent() {
               ))}
             </ul>
           </div>
+          )}
           <div>
             <p className="text-gray-400 text-sm mb-2">Justification</p>
             <p className="text-gray-300">{analysis.agents.researcher.analysis.justification}</p>
@@ -323,6 +325,7 @@ function AnalysisContent() {
               </div>
             )}
           </div>
+          {analysis.agents.trader.analysis.reasoning && Array.isArray(analysis.agents.trader.analysis.reasoning) && (
           <div>
             <p className="text-gray-400 text-sm mb-2">Reasoning</p>
             <ul className="list-disc list-inside text-gray-300 space-y-1">
@@ -331,6 +334,7 @@ function AnalysisContent() {
               ))}
             </ul>
           </div>
+          )}
         </div>
         )}
 

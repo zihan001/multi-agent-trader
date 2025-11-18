@@ -69,38 +69,11 @@ SENTIMENT ANALYSIS:
 {json.dumps(sentiment, indent=2)}
 
 TOKENOMICS ANALYSIS:
-{json.dumps(tokenomics, indent=2)}
+{json.dumps(tokenomics)}
 
-Provide your unified thesis in JSON format with the following structure:
-{{
-    "thesis_summary": "concise 2-3 sentence investment thesis",
-    "market_view": "strongly_bullish|bullish|neutral|bearish|strongly_bearish",
-    "conviction_level": "high|medium|low",
-    "time_horizon": "short_term|medium_term|long_term|mixed",
-    "analysis_synthesis": {{
-        "technical_weight": "how much weight to give technical signals (low|medium|high)",
-        "sentiment_weight": "how much weight to give sentiment signals (low|medium|high)",
-        "fundamental_weight": "how much weight to give fundamentals (low|medium|high)",
-        "primary_driver": "which analysis is most compelling"
-    }},
-    "key_bull_cases": ["bull point 1", "bull point 2", ...],
-    "key_bear_cases": ["bear point 1", "bear point 2", ...],
-    "signal_conflicts": "how conflicting signals were resolved",
-    "catalyst_watch": ["upcoming events or conditions to monitor"],
-    "risk_factors": ["key risk 1", "key risk 2", ...],
-    "opportunity_assessment": {{
-        "setup_quality": "excellent|good|fair|poor",
-        "risk_reward": "favorable|neutral|unfavorable",
-        "timing": "now|wait|avoid"
-    }},
-    "recommended_action": "strong_buy|buy|hold|sell|strong_sell",
-    "confidence": 0-100,
-    "reasoning": "detailed explanation of synthesis and recommendation"
-}}
+Return JSON with fields: thesis_summary, market_view, conviction_level, time_horizon, analysis_synthesis (technical_weight, sentiment_weight, fundamental_weight, primary_driver), key_bull_cases[], key_bear_cases[], signal_conflicts, catalyst_watch[], risk_factors[], opportunity_assessment (setup_quality, risk_reward, timing), recommended_action, confidence (0-100), reasoning.
 
-Focus on actionable insights and clear reasoning.
-
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -118,6 +91,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured research synthesis
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             analysis = json.loads(response)
             

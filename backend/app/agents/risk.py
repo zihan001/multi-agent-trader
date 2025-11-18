@@ -86,50 +86,11 @@ PORTFOLIO STATE:
 - Open Positions: {len(current_positions)}
 
 CURRENT POSITIONS:
-{json.dumps(current_positions, indent=2)}
+{json.dumps(current_positions)}
 
-Provide your risk assessment in JSON format with the following structure:
-{{
-    "decision": "approved|rejected|modified",
-    "risk_assessment": {{
-        "position_size_check": "pass|fail|adjusted",
-        "exposure_check": "pass|fail - current {current_exposure_pct:.1f}%",
-        "stop_loss_check": "pass|fail",
-        "risk_reward_check": "pass|fail",
-        "concentration_check": "pass|fail"
-    }},
-    "modifications": {{
-        "position_size_usd": adjusted_size_or_null,
-        "stop_loss": adjusted_stop_or_null,
-        "take_profit": adjusted_tp_or_null,
-        "reasoning": "why modifications were made"
-    }},
-    "final_trade": {{
-        "action": "buy|sell|hold|close",
-        "size_usd": final_position_size,
-        "entry_price": entry_price_or_null,
-        "stop_loss": stop_loss_price,
-        "take_profit": take_profit_price_or_levels,
-        "max_loss_pct": percentage_of_portfolio_at_risk
-    }},
-    "risk_metrics": {{
-        "position_size_pct": percentage_of_portfolio,
-        "new_total_exposure_pct": total_exposure_after_trade,
-        "max_loss_usd": maximum_potential_loss,
-        "max_loss_pct_portfolio": max_loss_as_pct_of_total_equity,
-        "risk_reward_ratio": expected_reward / max_risk,
-        "passes_all_checks": true|false
-    }},
-    "concerns": ["concern 1", "concern 2", ...],
-    "recommendations": ["recommendation 1", "recommendation 2", ...],
-    "rejection_reason": "why trade was rejected (if rejected)",
-    "confidence": 0-100,
-    "reasoning": "detailed explanation of risk decision"
-}}
+Return JSON with fields: decision, risk_assessment (position_size_check, exposure_check, stop_loss_check, risk_reward_check, concentration_check), modifications (position_size_usd, stop_loss, take_profit, reasoning), final_trade (action, size_usd, entry_price, stop_loss, take_profit, max_loss_pct), risk_metrics (position_size_pct, new_total_exposure_pct, max_loss_usd, max_loss_pct_portfolio, risk_reward_ratio, passes_all_checks), concerns[], recommendations[], rejection_reason, confidence (0-100), reasoning. Reject/modify trades violating risk rules.
 
-If the trade violates risk limits, REJECT it or MODIFY it to be compliant. Never approve trades that break risk rules.
-
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -147,6 +108,17 @@ Respond ONLY with valid JSON, no additional text."""
             Structured risk assessment
         """
         try:
+            # Strip markdown code blocks if present
+            response = response.strip()
+            if response.startswith("```"):
+                # Remove ```json and closing ```
+                lines = response.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response = "\n".join(lines)
+            
             # Try to parse as JSON
             assessment = json.loads(response)
             

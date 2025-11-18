@@ -109,6 +109,7 @@ class BacktestEngine:
             
             # Run backtest loop
             decisions_made = 0
+            min_candles_required = 50  # Minimum candles needed for indicator calculation
             
             for i, candle in enumerate(candles):
                 # Update portfolio mark-to-market
@@ -122,7 +123,8 @@ class BacktestEngine:
                 })
                 
                 # Check if we should make a decision
-                if i % decision_frequency == 0:
+                # Skip early candles until we have enough history for indicators
+                if i >= min_candles_required and i % decision_frequency == 0:
                     if max_decisions and decisions_made >= max_decisions:
                         print(f"Reached max decisions limit: {max_decisions}")
                         break

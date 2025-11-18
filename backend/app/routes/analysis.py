@@ -139,7 +139,7 @@ async def run_analysis(
         
         # Get current portfolio state
         portfolio_manager = PortfolioManager(db)
-        portfolio_data = portfolio_manager.get_portfolio_state()
+        portfolio_data = portfolio_manager.get_portfolio_summary()
         
         # Run agent pipeline
         pipeline = AgentPipeline(db)
@@ -172,7 +172,7 @@ async def run_analysis(
                 })
         
         # Get updated portfolio
-        updated_portfolio = portfolio_manager.get_portfolio_state()
+        updated_portfolio = portfolio_manager.get_portfolio_summary()
         
         return AnalyzeResponse(
             run_id=result["run_id"],
@@ -181,8 +181,8 @@ async def run_analysis(
             status=result["status"],
             agents=result["agents"],
             final_decision=result["final_decision"],
-            total_cost=result["total_cost"],
-            total_tokens=result["total_tokens"],
+            total_cost=result.get("total_cost", 0.0),
+            total_tokens=result.get("total_tokens", 0),
             portfolio_snapshot=updated_portfolio,
             errors=result["errors"],
         )

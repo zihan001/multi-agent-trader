@@ -67,7 +67,7 @@ def mock_portfolio_manager():
     """Mock PortfolioManager responses."""
     with patch('app.routes.analysis.PortfolioManager') as mock:
         mock_instance = Mock()
-        mock_instance.get_portfolio_state.return_value = {
+        mock_instance.get_portfolio_summary.return_value = {
             "cash_balance": 10000.0,
             "total_equity": 10000.0,
             "positions": [],
@@ -146,7 +146,7 @@ class TestAnalyzeEndpoint:
             with patch('app.routes.analysis.IndicatorService'):
                 with patch('app.routes.analysis.PortfolioManager') as mock_pm:
                     mock_instance = Mock()
-                    mock_instance.get_portfolio_state.return_value = {
+                    mock_instance.get_portfolio_summary.return_value = {
                         "cash_balance": 10000.0,
                         "total_equity": 10000.0,
                         "positions": [],

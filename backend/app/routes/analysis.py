@@ -183,7 +183,7 @@ async def run_analysis(
             final_decision=result["final_decision"],
             total_cost=result.get("total_cost", 0.0),
             total_tokens=result.get("total_tokens", 0),
-            portfolio_snapshot=updated_portfolio,
+            portfolio_snapshot=updated_portfolio["summary"],
             errors=result["errors"],
         )
         

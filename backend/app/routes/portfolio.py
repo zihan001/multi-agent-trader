@@ -74,8 +74,8 @@ async def get_positions(
     """Get all open positions."""
     try:
         pm = PortfolioManager(db, run_id)
-        summary = pm.get_portfolio_summary()
-        return summary['positions']
+        portfolio = pm.get_portfolio_summary()
+        return portfolio['positions']
     
     except Exception as e:
         logger.error(f"Error getting positions: {e}", exc_info=True)
@@ -90,12 +90,15 @@ async def get_trades(
     run_id: str = Query(default="live"),
     limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db)
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Get trade history."""
     try:
         pm = PortfolioManager(db, run_id)
         trades = pm.get_trade_history(limit)
-        return trades
+        return {
+            "trades": trades,
+            "total": len(trades)
+        }
     
     except Exception as e:
         logger.error(f"Error getting trades: {e}", exc_info=True)
@@ -149,7 +152,7 @@ async def execute_trade(
         )
         
         # Get updated portfolio
-        summary = pm.get_portfolio_summary()
+        portfolio = pm.get_portfolio_summary()
         
         return {
             "trade": {
@@ -162,7 +165,7 @@ async def execute_trade(
                 "pnl": executed_trade.pnl,
                 "timestamp": executed_trade.timestamp.isoformat()
             },
-            "portfolio": summary
+            "portfolio": portfolio
         }
     
     except HTTPException:

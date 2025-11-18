@@ -217,9 +217,12 @@ class PortfolioManager:
             PortfolioSnapshot.run_id == self.run_id
         ).order_by(PortfolioSnapshot.timestamp.desc()).first()
     
-    def get_portfolio_summary(self) -> Dict[str, Any]:
+    def get_portfolio_summary(self, current_prices: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Get a summary of the current portfolio state.
+        
+        Args:
+            current_prices: Optional dict of symbol -> current price for updating unrealized PnL
         
         Returns:
             Dictionary with portfolio details
@@ -227,22 +230,40 @@ class PortfolioManager:
         cash_balance = self.get_cash_balance()
         positions = self.get_all_positions()
         
+        # Update unrealized PnL if current prices provided
+        if current_prices:
+            self.update_all_unrealized_pnl(current_prices)
+            # Refresh positions after update
+            positions = self.get_all_positions()
+        
         position_data = []
         total_position_value = 0.0
         total_unrealized_pnl = 0.0
         
         for pos in positions:
-            position_value = pos.quantity * pos.avg_entry_price + pos.unrealized_pnl
+            # Calculate current price from unrealized PnL and entry price
+            # current_value = quantity * current_price
+            # unrealized_pnl = (current_price - avg_entry_price) * quantity
+            # current_price = (unrealized_pnl / quantity) + avg_entry_price
+            if pos.quantity > 0:
+                current_price = (pos.unrealized_pnl / pos.quantity) + pos.avg_entry_price
+            else:
+                current_price = pos.avg_entry_price
+            
+            position_value = pos.quantity * current_price
             total_position_value += position_value
             total_unrealized_pnl += pos.unrealized_pnl
+            
+            # Calculate unrealized PnL percentage
+            unrealized_pnl_pct = (pos.unrealized_pnl / (pos.quantity * pos.avg_entry_price)) * 100 if pos.quantity > 0 else 0.0
             
             position_data.append({
                 'symbol': pos.symbol,
                 'quantity': pos.quantity,
                 'avg_entry_price': pos.avg_entry_price,
-                'current_value': position_value,
+                'current_price': current_price,
                 'unrealized_pnl': pos.unrealized_pnl,
-                'updated_at': pos.updated_at.isoformat()
+                'unrealized_pnl_pct': unrealized_pnl_pct
             })
         
         total_equity = cash_balance + total_position_value
@@ -257,15 +278,14 @@ class PortfolioManager:
         total_return = ((total_equity - initial_cash) / initial_cash) * 100
         
         return {
-            'run_id': self.run_id,
-            'cash_balance': cash_balance,
-            'total_equity': total_equity,
-            'total_position_value': total_position_value,
-            'total_unrealized_pnl': total_unrealized_pnl,
-            'realized_pnl': realized_pnl,
-            'total_return_pct': total_return,
             'positions': position_data,
-            'num_positions': len(position_data)
+            'summary': {
+                'cash_balance': cash_balance,
+                'total_equity': total_equity,
+                'unrealized_pnl': total_unrealized_pnl,
+                'realized_pnl': realized_pnl,
+                'total_return_pct': total_return
+            }
         }
     
     def get_trade_history(self, limit: int = 100) -> List[Dict[str, Any]]:

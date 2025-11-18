@@ -13,16 +13,42 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BinanceClient:
-    """Client for interacting with Binance public API."""
+class BinanceService:
+    """
+    Service for interacting with Binance public API.
+    Provides both async and sync methods for fetching market data.
+    """
     
-    def __init__(self):
+    def __init__(self, async_client: Optional[httpx.AsyncClient] = None, sync_client: Optional[httpx.Client] = None):
+        """
+        Initialize BinanceService.
+        
+        Args:
+            async_client: Optional httpx.AsyncClient for dependency injection (useful for testing)
+            sync_client: Optional httpx.Client for dependency injection (useful for testing)
+        """
         self.base_url = settings.binance_base_url
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self._async_client = async_client
+        self._sync_client = sync_client
+        self._owns_clients = False
+        
+        # Create clients if not provided
+        if self._async_client is None:
+            self._async_client = httpx.AsyncClient(timeout=30.0)
+            self._owns_clients = True
+        if self._sync_client is None:
+            self._sync_client = httpx.Client(timeout=30.0)
+            self._owns_clients = True
     
     async def close(self):
-        """Close the HTTP client."""
-        await self.client.aclose()
+        """Close the async HTTP client if owned by this instance."""
+        if self._owns_clients and self._async_client:
+            await self._async_client.aclose()
+    
+    def close_sync(self):
+        """Close the sync HTTP client if owned by this instance."""
+        if self._owns_clients and self._sync_client:
+            self._sync_client.close()
     
     async def fetch_klines(
         self,
@@ -33,7 +59,7 @@ class BinanceClient:
         end_time: Optional[int] = None
     ) -> List[List]:
         """
-        Fetch OHLCV candlestick data from Binance.
+        Fetch OHLCV candlestick data from Binance (async).
         
         Args:
             symbol: Trading pair symbol (e.g., 'BTCUSDT')
@@ -58,7 +84,48 @@ class BinanceClient:
             params["endTime"] = end_time
         
         try:
-            response = await self.client.get(url, params=params)
+            response = await self._async_client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching klines for {symbol}: {e}")
+            raise
+    
+    def fetch_klines_sync(
+        self,
+        symbol: str,
+        interval: str = "1h",
+        limit: int = 100,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None
+    ) -> List[List]:
+        """
+        Fetch OHLCV candlestick data from Binance (synchronous).
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            interval: Timeframe (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+            limit: Number of candles to fetch (max 1000)
+            start_time: Start timestamp in milliseconds
+            end_time: End timestamp in milliseconds
+        
+        Returns:
+            List of klines [timestamp, open, high, low, close, volume, ...]
+        """
+        url = f"{self.base_url}/api/v3/klines"
+        params = {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "limit": min(limit, 1000)
+        }
+        
+        if start_time:
+            params["startTime"] = start_time
+        if end_time:
+            params["endTime"] = end_time
+        
+        try:
+            response = self._sync_client.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -79,7 +146,7 @@ class BinanceClient:
         params = {"symbol": symbol.upper()}
         
         try:
-            response = await self.client.get(url, params=params)
+            response = await self._async_client.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -100,12 +167,69 @@ class BinanceClient:
         params = {"symbol": symbol.upper()}
         
         try:
-            response = await self.client.get(url, params=params)
+            response = await self._async_client.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
             logger.error(f"Error fetching 24h ticker for {symbol}: {e}")
             raise
+    
+    def get_historical_klines(
+        self,
+        symbol: str,
+        interval: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch historical klines for a date range (synchronous, for backtesting).
+        
+        Args:
+            symbol: Trading pair symbol
+            interval: Timeframe
+            start_time: Start datetime
+            end_time: End datetime
+            
+        Returns:
+            List of formatted candle dicts
+        """
+        start_ms = int(start_time.timestamp() * 1000)
+        end_ms = int(end_time.timestamp() * 1000)
+        
+        all_klines = []
+        current_start = start_ms
+        
+        # Binance limits to 1000 candles per request
+        while current_start < end_ms:
+            klines = self.fetch_klines_sync(
+                symbol=symbol,
+                interval=interval,
+                limit=1000,
+                start_time=current_start,
+                end_time=end_ms,
+            )
+            
+            if not klines:
+                break
+            
+            all_klines.extend(klines)
+            
+            # Move to next batch
+            current_start = klines[-1][0] + 1
+        
+        # Format klines
+        formatted = []
+        for kline in all_klines:
+            formatted.append({
+                "timestamp": datetime.fromtimestamp(kline[0] / 1000),
+                "open": float(kline[1]),
+                "high": float(kline[2]),
+                "low": float(kline[3]),
+                "close": float(kline[4]),
+                "volume": float(kline[5]),
+            })
+        
+        return formatted
 
 
 def save_candles_to_db(
@@ -183,13 +307,13 @@ async def fetch_and_store_candles(
     Returns:
         Number of candles saved
     """
-    client = BinanceClient()
+    service = BinanceService()
     try:
-        klines = await client.fetch_klines(symbol, interval, limit)
+        klines = await service.fetch_klines(symbol, interval, limit)
         count = save_candles_to_db(db, symbol, interval, klines)
         return count
     finally:
-        await client.close()
+        await service.close()
 
 
 def get_latest_candles(

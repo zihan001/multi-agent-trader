@@ -5,13 +5,10 @@ import pytest
 from datetime import datetime, timedelta
 from app.models.database import Candle
 from app.services.indicators import (
-    candles_to_dataframe,
+    IndicatorService,
     calculate_rsi,
     calculate_macd,
     calculate_ema,
-    calculate_all_indicators,
-    assess_trend,
-    assess_momentum,
     get_overbought_oversold_status
 )
 
@@ -46,7 +43,7 @@ def sample_candles():
 
 def test_candles_to_dataframe(sample_candles):
     """Test converting candles to DataFrame."""
-    df = candles_to_dataframe(sample_candles)
+    df = IndicatorService.candles_to_dataframe(sample_candles)
     
     assert len(df) == 100
     assert 'open' in df.columns
@@ -58,7 +55,7 @@ def test_candles_to_dataframe(sample_candles):
 
 def test_calculate_rsi(sample_candles):
     """Test RSI calculation."""
-    df = candles_to_dataframe(sample_candles)
+    df = IndicatorService.candles_to_dataframe(sample_candles)
     rsi = calculate_rsi(df, window=14)
     
     assert len(rsi) == 100
@@ -69,7 +66,7 @@ def test_calculate_rsi(sample_candles):
 
 def test_calculate_macd(sample_candles):
     """Test MACD calculation."""
-    df = candles_to_dataframe(sample_candles)
+    df = IndicatorService.candles_to_dataframe(sample_candles)
     macd_data = calculate_macd(df)
     
     assert 'macd' in macd_data
@@ -80,7 +77,7 @@ def test_calculate_macd(sample_candles):
 
 def test_calculate_ema(sample_candles):
     """Test EMA calculation."""
-    df = candles_to_dataframe(sample_candles)
+    df = IndicatorService.candles_to_dataframe(sample_candles)
     ema = calculate_ema(df, window=21)
     
     assert len(ema) == 100
@@ -91,7 +88,8 @@ def test_calculate_ema(sample_candles):
 
 def test_calculate_all_indicators(sample_candles):
     """Test calculating all indicators at once."""
-    indicators = calculate_all_indicators(sample_candles)
+    service = IndicatorService()
+    indicators = service.calculate_from_candles(sample_candles)
     
     # Check all expected keys exist
     assert 'current_price' in indicators
@@ -122,16 +120,18 @@ def test_calculate_all_indicators(sample_candles):
 
 def test_assess_trend(sample_candles):
     """Test trend assessment."""
-    df = candles_to_dataframe(sample_candles)
-    trend = assess_trend(df)
+    service = IndicatorService()
+    df = service.candles_to_dataframe(sample_candles)
+    trend = service._assess_trend(df)
     
     assert trend in ['uptrend', 'downtrend', 'sideways']
 
 
 def test_assess_momentum(sample_candles):
     """Test momentum assessment."""
-    df = candles_to_dataframe(sample_candles)
-    momentum = assess_momentum(df)
+    service = IndicatorService()
+    df = service.candles_to_dataframe(sample_candles)
+    momentum = service._assess_momentum(df)
     
     assert momentum in ['strong', 'moderate', 'weak']
 
@@ -172,7 +172,8 @@ def test_indicators_with_minimal_data():
         )
         candles.append(candle)
     
-    indicators = calculate_all_indicators(candles)
+    service = IndicatorService()
+    indicators = service.calculate_from_candles(candles)
     
     # Should still return a result (some values may be None)
     assert 'current_price' in indicators
@@ -181,7 +182,8 @@ def test_indicators_with_minimal_data():
 
 def test_bollinger_bands_width(sample_candles):
     """Test that Bollinger Bands width is positive."""
-    indicators = calculate_all_indicators(sample_candles)
+    service = IndicatorService()
+    indicators = service.calculate_from_candles(sample_candles)
     
     assert indicators['bb_upper'] > indicators['bb_middle']
     assert indicators['bb_middle'] > indicators['bb_lower']

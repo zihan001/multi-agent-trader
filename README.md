@@ -137,7 +137,7 @@ MAX_POSITION_SIZE_PCT=0.10
 ## Development Roadmap
 
 - [x] Phase 1: Project foundation and structure
-- [ ] Phase 2: Core services (Binance, portfolio, indicators)
+- [x] Phase 2: Core services (Binance, portfolio, indicators)
 - [ ] Phase 3: Agent system implementation
 - [ ] Phase 4: API endpoints and backtest engine
 - [ ] Phase 5: Frontend application

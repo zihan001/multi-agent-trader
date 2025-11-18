@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.routes import market, portfolio
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -47,10 +48,13 @@ async def health_check():
     }
 
 
-# TODO: Import and include routers when they are created
-# from app.routes import market, portfolio, analysis, backtest
-# app.include_router(market.router, prefix="/market", tags=["market"])
-# app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
+# Include API routers
+app.include_router(market.router, prefix="/market", tags=["market"])
+app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
+
+
+# TODO: Import and include remaining routers when they are created
+# from app.routes import analysis, backtest
 # app.include_router(analysis.router, prefix="/analyze", tags=["analysis"])
 # app.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
 

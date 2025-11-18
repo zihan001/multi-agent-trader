@@ -79,3 +79,27 @@ class AgentLog(Base):
     latency_seconds = Column(Float, nullable=True)  # API call latency
     run_id = Column(String(50), nullable=True, index=True)  # Optional grouping
     symbol = Column(String(20), nullable=True, index=True)  # Optional symbol context
+
+
+class BacktestRun(Base):
+    """Backtest execution metadata and results."""
+    __tablename__ = "backtest_runs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(String(100), nullable=False, unique=True, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    start_date = Column(DateTime(timezone=True), nullable=False)
+    end_date = Column(DateTime(timezone=True), nullable=False)
+    timeframe = Column(String(10), nullable=False)
+    initial_cash = Column(Float, nullable=False)
+    decision_frequency = Column(Integer, nullable=False)  # Run pipeline every N candles
+    max_decisions = Column(Integer, nullable=True)  # Optional cap on decisions
+    status = Column(String(20), nullable=False, index=True)  # running, completed, failed
+    final_equity = Column(Float, nullable=True)
+    total_return = Column(Float, nullable=True)  # Return percentage
+    max_drawdown = Column(Float, nullable=True)  # Max drawdown percentage
+    num_trades = Column(Integer, nullable=True)
+    num_decisions = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)

@@ -5,10 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routes import market, portfolio
-
-# Create database tables
-Base.metadata.create_all(bind=engine)
+from app.routes import market, portfolio, analysis, backtest
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -18,6 +15,14 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup."""
+    # Only create tables if not in test environment
+    if settings.environment != "test":
+        Base.metadata.create_all(bind=engine)
 
 # Configure CORS
 app.add_middleware(
@@ -51,12 +56,8 @@ async def health_check():
 # Include API routers
 app.include_router(market.router, prefix="/market", tags=["market"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
-
-
-# TODO: Import and include remaining routers when they are created
-# from app.routes import analysis, backtest
-# app.include_router(analysis.router, prefix="/analyze", tags=["analysis"])
-# app.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
+app.include_router(analysis.router)
+app.include_router(backtest.router)
 
 
 if __name__ == "__main__":

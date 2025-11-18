@@ -2,17 +2,38 @@
 Integration tests for API endpoints.
 """
 import pytest
+import os
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.main import app
+from sqlalchemy.pool import StaticPool
+
+# Set test environment FIRST before any app imports
+os.environ["ENVIRONMENT"] = "test"
+
 from app.core.database import Base, get_db
+# Import all models so Base.metadata knows about them
+from app.models import Candle, Trade, Position, PortfolioSnapshot, AgentLog, BacktestRun
+from app.core.config import settings
+
+# Force reload settings after environment variable is set
+settings.environment = "test"
+
+from app.main import app  # Import app last to avoid shadowing
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def db_session():
     """Create a test database session."""
-    engine = create_engine('sqlite:///:memory:')
+    # Use StaticPool to ensure all connections share the same in-memory database
+    # This is crucial because TestClient uses threading, and each thread would
+    # otherwise get a new :memory: database
+    engine = create_engine(
+        'sqlite:///:memory:',
+        connect_args={'check_same_thread': False},
+        poolclass=StaticPool  # Share single connection across all threads
+    )
+    
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -20,9 +41,11 @@ def db_session():
     yield session
     
     session.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def client(db_session):
     """Create a test client with database override."""
     def override_get_db():

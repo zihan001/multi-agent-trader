@@ -138,10 +138,11 @@ MAX_POSITION_SIZE_PCT=0.10
 
 - [x] Phase 1: Project foundation and structure
 - [x] Phase 2: Core services (Binance, portfolio, indicators)
-- [ ] Phase 3: Agent system implementation
-- [ ] Phase 4: API endpoints and backtest engine
+- [x] Phase 3: Agent system implementation
+- [x] Phase 4: API endpoints and backtest engine
 - [ ] Phase 5: Frontend application
 - [ ] Phase 6: AWS deployment
+- [ ] Post-MVP: Paper trading mode for futures and spot (use Binance testnet for now)
 
 ## Technology Stack
 
@@ -216,14 +217,16 @@ The system analyzes real-time or recent crypto market data (via Binance’s publ
 - Backtesting with historical data
 - Web UI to visualize markets, decisions, and portfolio
 - Deployment on AWS (backend + DB + logging)
+- **Post-MVP**: Paper trading mode for futures and spot (defer to after MVP validation)
 
 ### 2.2 Out of Scope
 
 - Real money trading
-- Binance private API keys / authenticated trading
+- Binance private API keys / authenticated trading (use testnet during development)
 - High-frequency trading
 - Multi-user auth (single demo user only)
 - Complex order types / order book microstructure
+- Dedicated paper trading infrastructure (MVP uses Binance testnet endpoints)
 
 ---
 

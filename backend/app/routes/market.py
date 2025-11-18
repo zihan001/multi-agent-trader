@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.core.database import get_db
-from app.services import binance, indicators
+from app.services import binance
+from app.services.indicators import IndicatorService, get_overbought_oversold_status
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,8 @@ async def get_latest_market_data(
             )
         
         # Calculate indicators
-        indicator_data = indicators.calculate_all_indicators(candles)
+        indicator_service = IndicatorService()
+        indicator_data = indicator_service.calculate_from_candles(candles)
         
         # Get latest candle for basic info
         latest_candle = candles[-1]
@@ -119,7 +121,7 @@ async def get_latest_market_data(
                 "assessment": {
                     "trend": indicator_data['trend'],
                     "momentum": indicator_data['momentum'],
-                    "overbought_oversold": indicators.get_overbought_oversold_status(
+                    "overbought_oversold": get_overbought_oversold_status(
                         indicator_data['rsi_14'],
                         indicator_data['stoch_k']
                     )

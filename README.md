@@ -7,23 +7,44 @@
 ## Overview
 
 This system simulates a crypto trading firm where specialized AI agents analyze market data, debate trading decisions, and execute simulated trades. The project demonstrates:
-- Multi-agent LLM orchestration
+- Multi-agent LLM orchestration (primary focus)
 - Real-time market data integration (Binance API)
 - Portfolio simulation and backtesting
 - Full-stack web application
-- AWS cloud deployment
+- AWS cloud deployment with dual-mode operation
+
+**Deployment Strategy:**
+- **Development/Local Demo**: LLM-based agents (showcase AI capabilities locally)
+- **AWS Production Deployment**: Rule-based mode ONLY (zero LLM costs for public access)
+- **Capability**: Full LLM system available locally, rule-based deployed to cloud
+- **Future**: Optional ML models to enhance rule-based strategies
 
 **⚠️ Note:** This is a **simulation only**. No real trading occurs.
 
 ## Features
 
-- 🤖 **Six Specialized AI Agents** - Technical, Sentiment, Tokenomics Analysts + Researcher, Trader, Risk Manager
+### Phase 1-6: LLM-Based System (PRIMARY - For Portfolio Demonstration)
+- 🤖 **Six Specialized LLM Agents** - Technical, Sentiment, Tokenomics Analysts + Researcher, Trader, Risk Manager
+- 🧠 **Natural Language Reasoning** - Agents provide human-readable explanations for every decision
 - 📊 **Live Market Data** - Real-time OHLCV from Binance public API
 - 💰 **Portfolio Simulation** - Track positions, PnL, and equity over time
-- ⏮️ **Backtesting Engine** - Test strategies on historical data
-- 🌐 **Web Interface** - Interactive dashboard for analysis and monitoring
+- ⏮️ **LLM Agent Backtesting** - Test AI decision-making on historical data
+- 🌐 **Web Interface** - Interactive dashboard showing agent reasoning and decisions
 - ☁️ **AWS Deployment** - Production-ready cloud infrastructure
-- 💵 **Cost-Conscious** - Token budgets and tiered LLM models
+- 💵 **Cost-Conscious** - Token budgets, tiered LLM models, and daily spending limits
+
+### Phase 6+: Production Deployment Optimization (Cost-Effective for Live Demos)
+- 🎯 **Rule-Based Trading Engine** - Deterministic decisions based on technical indicators (no LLM costs)
+- ⚡ **VectorBT Backtesting** - Vectorized backtesting for 100x speed improvement
+- 📈 **TA-Lib Integration** - 150+ professional technical indicators
+- 🔄 **Dual-Mode Operation** - Switch between LLM and rule modes via environment variable
+- 🔮 **Future: ML Enhancement** - Optional ML models to work alongside rule-based strategies
+
+### Phase 6.5+: Advanced LLM Features (When Budget Allows)
+- 🤝 **LangChain Integration** - Enhanced agent orchestration with tools, memory, and advanced reasoning
+- 🧠 **Agent Memory** - Context retention across decisions for improved learning
+- 📝 **Paper Trading** - Real-time trading simulation via Binance testnet (spot & futures)
+- 🔍 **ReAct Agents** - Iterative reasoning and tool usage for complex analysis
 
 ## Quick Start
 
@@ -33,6 +54,7 @@ This system simulates a crypto trading firm where specialized AI agents analyze 
 - Python 3.11+
 - Node.js 20+ (for frontend development)
 - LLM API key (OpenAI or OpenRouter)
+- Binance testnet account (optional, for paper trading features)
 
 ### Setup
 
@@ -131,15 +153,39 @@ Market Data → [Technical, Sentiment, Tokenomics Analysts]
            → Researcher → Trader → Risk Manager → Decision
 ```
 
-## API Endpoints (Planned)
+## API Endpoints
 
-- `GET /health` - Health check
+### Core Endpoints
+- `GET /health` - Health check (includes current TRADING_MODE)
 - `GET /market/symbols` - Available trading symbols
 - `GET /market/{symbol}/latest` - Latest market data
-- `POST /analyze` - Run agent analysis
+- `POST /analyze` - Run analysis (LLM agents OR rule-based engine based on TRADING_MODE)
 - `GET /portfolio` - Current portfolio state
 - `GET /trades` - Trade history
-- `POST /backtest` - Run historical backtest
+- `GET /config/mode` - Get current trading mode and capabilities
+- `POST /config/mode` - Switch trading mode (llm/rule) - admin only
+
+### Backtesting Endpoints
+
+#### Phase 1-6: LLM Agent Backtesting
+- `POST /backtest/agents` - Run LLM agent-based historical backtest
+  - Returns agent reasoning, decisions, and performance
+  - Costs LLM tokens (monitored against budget)
+  
+#### Phase 6+: Technical Strategy Backtesting  
+- `POST /backtest/technical` - Run VectorBT technical strategy backtest
+  - Pure indicator-based strategies (RSI, MACD, EMA, etc.)
+  - 100x faster than LLM backtest
+  - Zero LLM costs
+  
+- `GET /backtest/runs` - List all backtest runs
+- `GET /backtest/{run_id}` - Get detailed backtest results
+
+### Paper Trading Endpoints (Phase 6.5+)
+- `POST /paper/order` - Place paper trade order on Binance testnet
+- `GET /paper/positions` - Get current paper trading positions
+- `GET /paper/balance` - Get paper trading account balance
+- `DELETE /paper/position/{symbol}` - Close paper trading position
 
 ## Configuration
 
@@ -149,26 +195,102 @@ Key environment variables (see `.env.example`):
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/trading_db
 
-# LLM Configuration
+# Trading Mode (Primary Configuration)
+TRADING_MODE=llm  # Options: llm (Phase 1-6), rule (Phase 6+)
+
+# LLM Configuration (for TRADING_MODE=llm)
 LLM_API_KEY=your_api_key_here
 CHEAP_MODEL=gpt-3.5-turbo
 STRONG_MODEL=gpt-4-turbo-preview
 DAILY_TOKEN_BUDGET=100000
 
+# Rule-Based Configuration (for TRADING_MODE=rule - Phase 6+)
+RULE_STRATEGY=RSI_MACD  # Options: RSI_MACD, EMA_CROSSOVER, BOLLINGER_BANDS
+# Future: ML_MODEL_PATH for optional ML enhancements
+
 # Trading Simulation
 INITIAL_CASH=10000.0
 MAX_POSITION_SIZE_PCT=0.10
+
+# Binance Testnet (for paper trading - Phase 6.5+)
+BINANCE_TESTNET_ENABLED=false
+BINANCE_TESTNET_API_KEY=your_testnet_key
+BINANCE_TESTNET_SECRET=your_testnet_secret
 ```
 
 ## Development Roadmap
 
+### ✅ Completed Phases (LLM-Based System - Local Development)
 - [x] Phase 1: Project foundation and structure
 - [x] Phase 2: Core services (Binance, portfolio, indicators)
-- [x] Phase 3: Agent system implementation
-- [x] Phase 4: API endpoints and backtest engine
-- [x] Phase 5: Frontend application (Next.js with Dashboard, Analysis, Portfolio, Backtest views)
-- [ ] Phase 6: AWS deployment
-- [ ] Post-MVP: Paper trading mode for futures and spot (use Binance testnet for now)
+- [x] Phase 3: LLM agent system implementation
+- [x] Phase 4: API endpoints and LLM backtest engine
+- [x] Phase 5: Frontend application with agent reasoning visualization
+
+**🎯 Deliverable**: Fully functional LLM agent trading system for local portfolio demonstrations
+
+---
+
+### 🚧 Phase 6: Rule-Based Trading Engine (IN PROGRESS)
+
+#### A. Deterministic Rule Engine
+- [ ] Implement rule-based decision logic
+  - RSI + MACD strategy
+  - EMA crossover strategy
+  - Bollinger Bands + Volume strategy
+- [ ] Rule-based portfolio management
+- [ ] Environment variable to switch: `TRADING_MODE=rule`
+- [ ] Frontend displays rule-based signals (no agent reasoning)
+
+#### B. VectorBT Integration
+- [ ] VectorBT backtesting engine
+  - Vectorized operations for 100x speed
+  - Professional metrics (Sharpe, Sortino, Calmar ratios)
+  - Portfolio optimization
+- [ ] TA-Lib integration (150+ indicators)
+
+**🎯 Deliverable**: Production-ready rule-based system with zero LLM costs
+
+---
+
+### 📦 Phase 7: AWS Deployment (Rule-Based Mode ONLY)
+- [ ] Deploy **rule-based system only** to AWS
+- [ ] ECS/EC2 deployment (no LLM API keys needed)
+- [ ] RDS PostgreSQL for portfolio data and trade history
+- [ ] ALB configuration
+- [ ] CloudWatch logging
+- [ ] Environment: `TRADING_MODE=rule` (hardcoded in production)
+- [ ] Public demo accessible without ongoing costs
+
+**🎯 Deliverable**: Live public demo running rule-based strategies at zero LLM cost
+
+**Note**: LLM system remains available for local demonstrations and portfolio presentations
+
+---
+
+### 💡 Future Enhancements (Post-Deployment)
+
+---
+
+### 🚀 Future Enhancements (Post-Deployment)
+
+#### Advanced LLM Features (Local Development Only)
+- [ ] LangChain/CrewAI integration for enhanced orchestration
+- [ ] Tool-using agents (dynamic data fetching)
+- [ ] Agent memory for context retention
+- [ ] ReAct reasoning loops
+
+#### Paper Trading
+- [ ] Binance testnet integration (spot & futures)
+- [ ] Real-time paper trading mode
+- [ ] Live order placement simulation
+
+#### ML Enhancements (Optional)
+- [ ] ML models to work alongside rule-based strategies
+- [ ] Not trained on LLM outputs
+- [ ] Can be deployed to AWS if desired
+
+**🎯 Note**: Advanced LLM features for local portfolio demonstrations only
 
 ## Technology Stack
 
@@ -182,9 +304,25 @@ MAX_POSITION_SIZE_PCT=0.10
 **Backend:**
 - FastAPI (Python web framework)
 - SQLAlchemy + PostgreSQL (database)
+
+**Phase 1-6: LLM-Based (Primary)**
 - OpenAI/OpenRouter (LLM providers)
-- TA-Lib (technical indicators)
+- Custom multi-agent pipeline (6 specialized agents)
+- Token budget enforcement and cost tracking
+
+**Phase 6+: Production Optimization**
+- VectorBT (vectorized backtesting - 100x faster)
+- TA-Lib (150+ professional technical indicators)
+- Custom rule engine (deterministic trading logic)
+- Future: scikit-learn / XGBoost (optional ML enhancements)
+
+**Phase 6.5+: Advanced Features**
+- LangChain/CrewAI (enhanced agent orchestration)
+- python-binance (Binance testnet integration)
+
+**Shared Infrastructure:**
 - HTTPX (Binance API client)
+- Pandas / NumPy (data processing)
 
 **Infrastructure:**
 - Docker & Docker Compose
@@ -241,16 +379,59 @@ The system analyzes real-time or recent crypto market data (via Binance’s publ
 
 ### 2.1 In Scope
 
+#### Phase 1-5: LLM-Based System (LOCAL - Portfolio Demonstration)
 - Live data ingestion from Binance public API
-- Multi-agent LLM reasoning pipeline
-- Trade decision generation
-- Risk evaluation & approval/adjustment
-- Simulated order execution
+- **Six specialized LLM agents** with natural language reasoning:
+  - Technical, Sentiment, Tokenomics Analysts
+  - Researcher, Trader, Risk Manager
+- Multi-agent orchestration (analysts → researcher → trader → risk)
+- LLM cost tracking and daily budget enforcement
+- Simulated order execution with explainable decisions
 - Portfolio PnL tracking
-- Backtesting with historical data
-- Web UI to visualize markets, decisions, and portfolio
-- Deployment on AWS (backend + DB + logging)
-- **Post-MVP**: Paper trading mode for futures and spot (defer to after MVP validation)
+- LLM agent backtesting with historical data
+- Web UI showing agent reasoning and decision-making process
+- **Runs locally only** for portfolio presentations
+
+**Goal**: Demonstrate advanced AI/ML engineering skills and multi-agent system design
+
+---
+
+#### Phase 6: Rule-Based System Development
+
+**A. Rule-Based Trading Engine** (Zero LLM costs)
+- Deterministic decision logic based on technical indicators
+- Strategies: RSI+MACD, EMA Crossover, Bollinger Bands
+- Environment variable to switch modes: `TRADING_MODE=rule`
+- Same UI, same API, zero ongoing costs
+
+**B. VectorBT + TA-Lib Integration** (Professional Backtesting)
+- Vectorized backtesting (100x speed improvement over LLM backtest)
+- 150+ TA-Lib indicators for institutional-grade analysis
+- Metrics: Sharpe ratio, Sortino ratio, Calmar ratio, max drawdown
+
+**Goal**: Build production-ready rule-based system for AWS deployment
+
+---
+
+#### Phase 7: AWS Deployment (Rule-Based ONLY)
+- Deploy rule-based system to AWS (ECS/EC2, RDS, ALB)
+- Public demo accessible without LLM costs
+- No LLM API keys in production environment
+- Cost-effective 24/7 operation
+
+**Goal**: Live public portfolio demo running at zero LLM cost
+
+**Future Enhancement**: Optional ML models (not LLM-trained) to work alongside rule-based strategies
+
+---
+
+#### Phase 6.5+: Advanced LLM Features (Budget Permitting)
+- **LangChain/CrewAI**: Enhanced agent orchestration with tools and memory
+- **Paper Trading**: Binance testnet integration for spot and futures
+- **Agent Memory**: Context retention across trading sessions
+- **ReAct Agents**: Iterative reasoning and tool usage
+
+**Goal**: State-of-the-art agentic AI when LLM budget allows
 
 ### 2.2 Out of Scope
 
@@ -378,14 +559,22 @@ The engine shall include these logical agents:
     - open/closed positions
     - trade history
 - **FR-9**: Backtesting:
-  - input: symbol, start date, end date, timeframe
-  - iterate over candles, optionally only every N candles to save LLM calls
-  - simulate trades and portfolio evolution
-  - compute metrics:
-    - total return
-    - max drawdown
-    - number of trades
-  - return time series equity curve
+  - **LLM Agent Backtest**:
+    - input: symbol, start date, end date, timeframe
+    - iterate over candles, optionally only every N candles to save LLM calls
+    - simulate trades and portfolio evolution
+    - compute metrics: total return, max drawdown, number of trades
+    - return time series equity curve
+  - **VectorBT Technical Backtest** (Phase 6.5+):
+    - vectorized backtesting for 100x speed improvement
+    - support for pure technical indicator strategies
+    - professional metrics: Sharpe, Sortino, Calmar ratios
+    - portfolio optimization and walk-forward analysis
+  - **TA-Lib Integration** (Phase 6.5+):
+    - 150+ professional technical indicators
+    - pattern recognition (candlestick patterns, chart patterns)
+    - statistical functions and volatility indicators
+    - cycle indicators and volume analysis
 
 ---
 
@@ -425,7 +614,7 @@ Backend must expose:
 6. `GET /trades`  
    - Returns trade history (paginated if needed).
 
-7. `POST /backtest`  
+7. `POST /backtest/agents` (LLM Agent Backtest)
    - **Request body**:
      - `symbol`
      - `start_date`
@@ -434,8 +623,40 @@ Backend must expose:
      - `max_decisions` (to cap LLM calls)
    - **Response**:
      - summary metrics
-     - equity curve (list of `{timestamp, equity}`
+     - equity curve (list of `{timestamp, equity}`)
      - list of trades taken in backtest
+
+8. `POST /backtest/technical` (VectorBT Technical Backtest - Phase 6.5+)
+   - **Request body**:
+     - `symbol`
+     - `start_date`
+     - `end_date`
+     - `strategy` (e.g. `RSI_MACD`, `EMA_CROSSOVER`)
+     - `parameters` (strategy-specific params)
+   - **Response**:
+     - comprehensive metrics (Sharpe, Sortino, Calmar, max drawdown, win rate)
+     - equity curve
+     - trade list
+     - comparison with buy-and-hold
+
+9. `POST /paper/order` (Paper Trading - Phase 6.5+)
+   - **Request body**:
+     - `symbol`
+     - `side` (BUY/SELL)
+     - `type` (MARKET/LIMIT)
+     - `quantity`
+     - `price` (for LIMIT orders)
+     - `leverage` (for futures)
+   - **Response**:
+     - order confirmation
+     - execution details
+     - updated position
+
+10. `GET /paper/positions` (Paper Trading - Phase 6.5+)
+    - Returns all active paper trading positions
+
+11. `GET /paper/balance` (Paper Trading - Phase 6.5+)
+    - Returns paper trading account balance and equity
 
 ---
 

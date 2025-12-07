@@ -8,8 +8,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from app.core.database import get_db
-from app.services.backtest import BacktestEngine
+from app.backtesting.factory import BacktestEngineFactory
+from app.backtesting.base import BacktestResult
 from app.models.database import BacktestRun
+from app.core.config import settings
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
@@ -20,32 +22,15 @@ class BacktestRequest(BaseModel):
     start_date: str = Field(..., description="Start date in ISO format (YYYY-MM-DD)")
     end_date: str = Field(..., description="End date in ISO format (YYYY-MM-DD)")
     timeframe: str = Field(default="1h", description="Candle timeframe (1h, 4h, 1d, etc.)")
-    initial_cash: float = Field(default=10000.0, description="Starting cash balance")
-    decision_frequency: int = Field(default=4, description="Run pipeline every N candles")
-    max_decisions: Optional[int] = Field(None, description="Maximum number of decisions (cost control)")
-
-
-class BacktestMetrics(BaseModel):
-    """Backtest performance metrics."""
-    total_return_pct: float
-    max_drawdown_pct: float
-    sharpe_ratio: float
-    win_rate_pct: float
-    num_trades: int
-    avg_trade_pnl: float
-    final_equity: float
+    initial_capital: float = Field(default=10000.0, description="Starting capital")
+    engine_type: Optional[str] = Field(None, description="Backtest engine: 'llm' or 'vectorbt'")
+    strategy: Optional[str] = Field(None, description="Strategy for rule-based engines")
+    max_decisions: Optional[int] = Field(None, description="Maximum number of decisions (LLM only, cost control)")
 
 
 class BacktestResponse(BaseModel):
     """Response model for backtest endpoint."""
-    run_id: str
-    symbol: str
-    start_date: str
-    end_date: str
-    metrics: BacktestMetrics
-    equity_curve: List[Dict[str, Any]]
-    trades: List[Dict[str, Any]]
-    final_portfolio: Dict[str, Any]
+    result: Dict[str, Any]  # BacktestResult serialized
 
 
 @router.post("", response_model=BacktestResponse)
@@ -54,14 +39,11 @@ async def run_backtest(
     db: Session = Depends(get_db)
 ):
     """
-    Run a historical backtest simulation.
+    Run a historical backtest simulation using selected engine.
     
-    This endpoint:
-    1. Loads historical market data from the database or fetches from Binance
-    2. Simulates the agent pipeline over time at specified intervals
-    3. Executes simulated trades at historical prices
-    4. Calculates comprehensive performance metrics
-    5. Returns equity curve and trade history
+    Supports two engine types:
+    - **LLM**: Uses 6-agent pipeline (slow, expensive, max 50 decisions recommended)
+    - **VectorBT**: Fast vectorized backtesting (free, processes all data)
     
     Args:
         request: Backtest configuration parameters
@@ -91,43 +73,46 @@ async def run_backtest(
         # Validate symbol
         symbol = request.symbol.upper()
         
-        # Estimate cost and warn user
-        if request.max_decisions:
-            estimated_cost = request.max_decisions * 0.05  # Rough estimate
-            print(f"Estimated cost for {request.max_decisions} decisions: ~${estimated_cost:.2f}")
+        # Create backtest engine using factory
+        engine_type = request.engine_type or settings.trading_mode
+        strategy = request.strategy or settings.rule_strategy
         
-        # Initialize backtest engine
-        engine = BacktestEngine(db)
+        engine = BacktestEngineFactory.create(
+            db,
+            engine_type=engine_type,
+            strategy=strategy
+        )
+        
+        # Warn about LLM costs
+        if engine.engine_type == "llm":
+            max_dec = request.max_decisions or 100
+            estimated_cost = max_dec * 0.02
+            print(f"⚠️  LLM Backtest: {max_dec} decisions, estimated cost ~${estimated_cost:.2f}")
+        
+        print(f"[Backtest] Running {engine.engine_type} engine for {symbol} from {start_date} to {end_date}")
         
         # Run backtest
-        print(f"Starting backtest for {symbol} from {start_date} to {end_date}")
-        
-        result = engine.run_backtest(
+        result: BacktestResult = engine.run_backtest(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
             timeframe=request.timeframe,
-            initial_cash=request.initial_cash,
-            decision_frequency=request.decision_frequency,
-            max_decisions=request.max_decisions,
+            initial_capital=request.initial_capital,
+            max_decisions=request.max_decisions
         )
         
-        print(f"Backtest completed: {result['metrics']}")
+        print(f"[Backtest] Completed in {result.execution_time_ms:.0f}ms: {result.metrics.num_trades} trades, {result.metrics.total_return_pct:.2f}% return")
         
+        # Convert to dict for response
         return BacktestResponse(
-            run_id=result["run_id"],
-            symbol=result["symbol"],
-            start_date=result["start_date"],
-            end_date=result["end_date"],
-            metrics=BacktestMetrics(**result["metrics"]),
-            equity_curve=result["equity_curve"],
-            trades=result["trades"],
-            final_portfolio=result["final_portfolio"],
+            result=result.model_dump(mode='json')
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Backtest failed: {str(e)}"

@@ -2,9 +2,10 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { runAnalysis } from '@/lib/api';
-import type { AnalysisResponse } from '@/types/api';
-import { CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, ArrowLeft } from 'lucide-react';
+import { runAnalysis, getTradingMode } from '@/lib/api';
+import type { AnalysisResponse, TradingModeResponse } from '@/types/api';
+import { ArrowLeft } from 'lucide-react';
+import DecisionDisplay from '@/components/DecisionDisplay';
 
 function AnalysisContent() {
   const searchParams = useSearchParams();
@@ -12,10 +13,20 @@ function AnalysisContent() {
   const symbol = searchParams.get('symbol') || 'BTCUSDT';
   
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [modeInfo, setModeInfo] = useState<TradingModeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const fetchModeInfo = async () => {
+      try {
+        const mode = await getTradingMode();
+        setModeInfo(mode);
+      } catch (err) {
+        console.error('[Analysis] Failed to fetch trading mode:', err);
+      }
+    };
+
     const performAnalysis = async () => {
       setLoading(true);
       setError(null);
@@ -23,13 +34,9 @@ function AnalysisContent() {
         console.log(`[Analysis] Starting analysis for ${symbol}`);
         const data = await runAnalysis({ symbol, mode: 'live' });
         console.log('[Analysis] Response received:', data);
-        console.log('[Analysis] final_decision:', data.final_decision);
-        console.log('[Analysis] agents:', data.agents);
         setAnalysis(data);
       } catch (err: any) {
         console.error('[Analysis] Error caught:', err);
-        console.error('[Analysis] Error response:', err.response);
-        console.error('[Analysis] Error message:', err.message);
         
         // Handle specific error types based on HTTP status or message
         if (err.response) {
@@ -59,32 +66,9 @@ function AnalysisContent() {
       }
     };
 
+    fetchModeInfo();
     performAnalysis();
   }, [symbol]);
-
-  const getActionColor = (action: string) => {
-    switch (action.toUpperCase()) {
-      case 'BUY':
-        return 'text-green-400 bg-green-900/20 border-green-500';
-      case 'SELL':
-        return 'text-red-400 bg-red-900/20 border-red-500';
-      case 'HOLD':
-        return 'text-yellow-400 bg-yellow-900/20 border-yellow-500';
-      default:
-        return 'text-gray-400 bg-gray-900/20 border-gray-500';
-    }
-  };
-
-  const getActionIcon = (action: string) => {
-    switch (action.toUpperCase()) {
-      case 'BUY':
-        return <TrendingUp className="w-6 h-6" />;
-      case 'SELL':
-        return <TrendingDown className="w-6 h-6" />;
-      default:
-        return <AlertCircle className="w-6 h-6" />;
-    }
-  };
 
   if (loading) {
     return (
@@ -92,7 +76,11 @@ function AnalysisContent() {
         <div className="flex flex-col items-center justify-center py-24">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-4"></div>
           <p className="text-gray-400 text-lg">Analyzing {symbol}...</p>
-          <p className="text-gray-500 text-sm mt-2">This may take 10-15 seconds</p>
+          <p className="text-gray-500 text-sm mt-2">
+            {modeInfo?.engine_info.type === 'rule' 
+              ? 'Processing technical signals...' 
+              : 'Running AI agents... (10-15 seconds)'}
+          </p>
         </div>
       </div>
     );
@@ -120,19 +108,10 @@ function AnalysisContent() {
     return null;
   }
 
-  console.log('[Analysis Render] analysis object:', analysis);
-  console.log('[Analysis Render] final_decision:', analysis.final_decision);
-  console.log('[Analysis Render] errors:', analysis.errors);
-
-  // Check if analysis completed but has errors or missing final decision
   const hasErrors = analysis.errors && analysis.errors.length > 0;
-  const hasFinalDecision = analysis.final_decision && analysis.final_decision.action;
-  
-  console.log('[Analysis Render] hasErrors:', hasErrors);
-  console.log('[Analysis Render] hasFinalDecision:', hasFinalDecision);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 bg-gray-900 min-h-screen">
       {/* Header */}
       <div className="mb-8">
         <button
@@ -142,8 +121,23 @@ function AnalysisContent() {
           <ArrowLeft className="w-4 h-4" />
           Back to Dashboard
         </button>
-        <h1 className="text-3xl font-bold text-white mb-2">AI Analysis Results</h1>
-        <p className="text-gray-400">{symbol}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Trading Analysis Results</h1>
+            <p className="text-gray-400">{symbol}</p>
+          </div>
+          {modeInfo && (
+            <div className="text-right">
+              <div className="text-sm text-gray-400 mb-1">Engine Mode</div>
+              <div className="text-lg font-semibold text-white">
+                {modeInfo.engine_info.name}
+              </div>
+              <div className="text-xs text-gray-500">
+                ~${modeInfo.engine_info.cost_per_decision.toFixed(4)} per decision
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error Display */}
@@ -160,214 +154,8 @@ function AnalysisContent() {
         </div>
       )}
 
-      {/* Final Decision - Prominent Display */}
-      {hasFinalDecision ? (
-        <div className={`rounded-lg p-6 border-2 mb-8 ${getActionColor(analysis.final_decision!.action)}`}>
-        <div className="flex items-center gap-4 mb-4">
-          {getActionIcon(analysis.final_decision!.action)}
-          <div>
-            <h2 className="text-2xl font-bold">Final Decision: {analysis.final_decision!.action}</h2>
-            <p className="text-sm opacity-80">
-              {analysis.final_decision!.approved ? 'Approved by Risk Manager' : 'Not Approved'}
-            </p>
-          </div>
-        </div>
-        {analysis.final_decision!.quantity && (
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm opacity-80">Quantity</p>
-              <p className="font-semibold">{analysis.final_decision!.quantity!.toFixed(6)}</p>
-            </div>
-            <div>
-              <p className="text-sm opacity-80">Price</p>
-              <p className="font-semibold">${analysis.final_decision!.price?.toFixed(2)}</p>
-            </div>
-          </div>
-        )}
-      </div>
-      ) : (
-        <div className="rounded-lg p-6 border-2 mb-8 bg-yellow-900/20 border-yellow-500 text-yellow-400">
-          <div className="flex items-center gap-4">
-            <AlertCircle className="w-6 h-6" />
-            <div>
-              <h2 className="text-2xl font-bold">No Final Decision</h2>
-              <p className="text-sm opacity-80 mt-1">
-                The analysis completed but couldn't generate a trading decision. This may be due to rate limits or incomplete agent responses.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Agent Analysis Cards */}
-      <div className="space-y-6">
-        {/* Technical Analyst */}
-        {analysis.agents?.technical?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-xl font-semibold text-white mb-4">📊 Technical Analyst</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <p className="text-gray-400 text-sm">Trend</p>
-              <p className="text-white font-medium">{analysis.agents.technical.analysis.trend || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-gray-400 text-sm">Momentum</p>
-              <p className="text-white font-medium">{analysis.agents.technical.analysis.momentum || 'N/A'}</p>
-            </div>
-          </div>
-          {analysis.agents.technical.analysis.signals && Array.isArray(analysis.agents.technical.analysis.signals) && analysis.agents.technical.analysis.signals.length > 0 && (
-            <div className="mb-4">
-              <p className="text-gray-400 text-sm mb-2">Signals</p>
-              <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.agents.technical.analysis.signals.map((signal, idx) => (
-                  <li key={idx}>{signal}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div>
-            <p className="text-gray-400 text-sm mb-2">Reasoning</p>
-            <p className="text-gray-300">{analysis.agents.technical.analysis.reasoning || 'No reasoning provided'}</p>
-          </div>
-        </div>
-        )}
-
-        {/* Sentiment Analyst */}
-        {analysis.agents?.sentiment?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-xl font-semibold text-white mb-4">📰 Sentiment Analyst</h3>
-          <div className="mb-4">
-            <p className="text-gray-400 text-sm">Sentiment</p>
-            <p className="text-white font-medium capitalize">{analysis.agents.sentiment.analysis.sentiment}</p>
-          </div>
-          {analysis.agents.sentiment.analysis.narrative_points && Array.isArray(analysis.agents.sentiment.analysis.narrative_points) && analysis.agents.sentiment.analysis.narrative_points.length > 0 && (
-            <div>
-              <p className="text-gray-400 text-sm mb-2">Key Points</p>
-              <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.agents.sentiment.analysis.narrative_points.map((point, idx) => (
-                  <li key={idx}>{point}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Tokenomics Analyst */}
-        {analysis.agents?.tokenomics?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-xl font-semibold text-white mb-4">🪙 Tokenomics Analyst</h3>
-          <div className="mb-4">
-            <p className="text-gray-400 text-sm">Outlook</p>
-            <p className="text-white font-medium capitalize">{analysis.agents.tokenomics.analysis.outlook}</p>
-          </div>
-          {analysis.agents.tokenomics.analysis.key_points && Array.isArray(analysis.agents.tokenomics.analysis.key_points) && analysis.agents.tokenomics.analysis.key_points.length > 0 && (
-            <div>
-              <p className="text-gray-400 text-sm mb-2">Key Points</p>
-              <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {analysis.agents.tokenomics.analysis.key_points.map((point, idx) => (
-                  <li key={idx}>{point}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Researcher */}
-        {analysis.agents?.researcher?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-blue-700">
-          <h3 className="text-xl font-semibold text-white mb-4">🔬 Researcher Synthesis</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <p className="text-gray-400 text-sm">Thesis</p>
-              <p className="text-white font-medium capitalize">{analysis.agents.researcher.analysis.thesis}</p>
-            </div>
-            <div>
-              <p className="text-gray-400 text-sm">Confidence</p>
-              <p className="text-white font-medium">{(analysis.agents.researcher.analysis.confidence * 100).toFixed(0)}%</p>
-            </div>
-          </div>
-          {analysis.agents.researcher.analysis.top_risks && Array.isArray(analysis.agents.researcher.analysis.top_risks) && (
-          <div className="mb-4">
-            <p className="text-gray-400 text-sm mb-2">Top Risks</p>
-            <ul className="list-disc list-inside text-gray-300 space-y-1">
-              {analysis.agents.researcher.analysis.top_risks.map((risk, idx) => (
-                <li key={idx}>{risk}</li>
-              ))}
-            </ul>
-          </div>
-          )}
-          <div>
-            <p className="text-gray-400 text-sm mb-2">Justification</p>
-            <p className="text-gray-300">{analysis.agents.researcher.analysis.justification}</p>
-          </div>
-        </div>
-        )}
-
-        {/* Trader */}
-        {analysis.agents?.trader?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-green-700">
-          <h3 className="text-xl font-semibold text-white mb-4">💼 Trader Decision</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <p className="text-gray-400 text-sm">Action</p>
-              <p className="text-white font-medium">{analysis.agents.trader.analysis.action}</p>
-            </div>
-            <div>
-              <p className="text-gray-400 text-sm">Position Size</p>
-              <p className="text-white font-medium">{analysis.agents.trader.analysis.position_size_pct}%</p>
-            </div>
-            {analysis.agents.trader.analysis.stop_loss_pct && (
-              <div>
-                <p className="text-gray-400 text-sm">Stop Loss</p>
-                <p className="text-white font-medium">{analysis.agents.trader.analysis.stop_loss_pct}%</p>
-              </div>
-            )}
-          </div>
-          {analysis.agents.trader.analysis.reasoning && Array.isArray(analysis.agents.trader.analysis.reasoning) && (
-          <div>
-            <p className="text-gray-400 text-sm mb-2">Reasoning</p>
-            <ul className="list-disc list-inside text-gray-300 space-y-1">
-              {analysis.agents.trader.analysis.reasoning.map((reason, idx) => (
-                <li key={idx}>{reason}</li>
-              ))}
-            </ul>
-          </div>
-          )}
-        </div>
-        )}
-
-        {/* Risk Manager */}
-        {analysis.agents?.risk_manager?.analysis && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-yellow-700">
-          <h3 className="text-xl font-semibold text-white mb-4">🛡️ Risk Manager</h3>
-          <div className="mb-4">
-            <p className="text-gray-400 text-sm">Decision</p>
-            <div className="flex items-center gap-2 mt-1">
-              {analysis.agents.risk_manager.analysis.decision === 'APPROVE' ? (
-                <CheckCircle className="w-5 h-5 text-green-500" />
-              ) : analysis.agents.risk_manager.analysis.decision === 'REJECT' ? (
-                <XCircle className="w-5 h-5 text-red-500" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-yellow-500" />
-              )}
-              <p className="text-white font-medium">{analysis.agents.risk_manager.analysis.decision}</p>
-            </div>
-          </div>
-          {analysis.agents.risk_manager.analysis.adjusted_size_pct && (
-            <div className="mb-4">
-              <p className="text-gray-400 text-sm">Adjusted Size</p>
-              <p className="text-white font-medium">{analysis.agents.risk_manager.analysis.adjusted_size_pct}%</p>
-            </div>
-          )}
-          <div>
-            <p className="text-gray-400 text-sm mb-2">Explanation</p>
-            <p className="text-gray-300">{analysis.agents.risk_manager.analysis.explanation}</p>
-          </div>
-        </div>
-        )}
-      </div>
+      {/* Unified Decision Display */}
+      <DecisionDisplay result={analysis.result} />
 
       {/* Portfolio Snapshot */}
       {analysis.portfolio_snapshot && (

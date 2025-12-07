@@ -31,6 +31,35 @@ class Settings(BaseSettings):
     max_position_size_pct: float = 0.10
     max_total_exposure_pct: float = 0.80
     
+    # Trading Mode Configuration (Phase 6)
+    trading_mode: str = "llm"  # Options: "llm" or "rule"
+    
+    # Rule-Based Strategy Configuration (for trading_mode="rule")
+    rule_strategy: str = "rsi_macd"  # Options: "rsi_macd", "ema_crossover", "bb_volume"
+    
+    # RSI Strategy Parameters
+    rsi_period: int = 14
+    rsi_oversold: int = 30
+    rsi_overbought: int = 70
+    
+    # MACD Strategy Parameters
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    
+    # EMA Strategy Parameters
+    ema_fast: int = 9
+    ema_slow: int = 21
+    ema_trend: int = 50
+    
+    # Bollinger Bands Strategy Parameters
+    bb_period: int = 20
+    bb_std: float = 2.0
+    
+    # Volume Analysis Parameters
+    volume_ma_period: int = 20
+    volume_surge_threshold: float = 1.5  # 1.5x average volume
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

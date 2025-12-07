@@ -1,6 +1,8 @@
 // Health check
 export interface HealthResponse {
   status: string;
+  trading_mode?: string;
+  rule_strategy?: string;
 }
 
 // Market data types
@@ -83,6 +85,62 @@ export interface FinalDecision {
   approved: boolean;
 }
 
+// Unified Decision Types (Phase 6)
+export interface SignalData {
+  name: string;
+  value: number;
+  threshold?: number;
+  status: string;
+}
+
+export interface TradingDecision {
+  action: string;
+  symbol?: string;
+  quantity?: number;
+  price?: number;
+  confidence: number;
+  reasoning: string | string[];  // Can be string (rule mode) or array (LLM mode)
+  approved?: boolean;
+  stop_loss?: number;
+  take_profit?: number;
+}
+
+export interface DecisionMetadata {
+  engine_type: string;
+  model_used?: string;
+  strategy_name?: string;
+  total_cost: number;
+  total_tokens?: number;
+  execution_time_ms: number;
+}
+
+export interface AgentOutput {
+  analysis: any;
+  metadata: {
+    model: string;
+    tokens: number;
+    cost: number;
+    latency: number;
+  };
+}
+
+export interface DecisionResult {
+  run_id: string;
+  symbol: string;
+  timestamp: string;
+  decision: TradingDecision;
+  metadata: DecisionMetadata;
+  agents?: {
+    technical?: AgentOutput;
+    sentiment?: AgentOutput;
+    tokenomics?: AgentOutput;
+    researcher?: AgentOutput;
+    trader?: AgentOutput;
+    risk_manager?: AgentOutput;
+  };
+  signals?: Record<string, SignalData>;
+}
+
 export interface AnalysisRequest {
   symbol: string;
   mode?: 'live' | 'backtest_step';
@@ -90,23 +148,32 @@ export interface AnalysisRequest {
 }
 
 export interface AnalysisResponse {
-  run_id: string;
-  symbol: string;
-  timestamp: string;
-  status: string;
-  agents: {
-    technical?: { analysis: TechnicalAnalysis; metadata?: any };
-    sentiment?: { analysis: SentimentAnalysis; metadata?: any };
-    tokenomics?: { analysis: TokenomicsAnalysis; metadata?: any };
-    researcher?: { analysis: ResearcherThesis; metadata?: any };
-    trader?: { analysis: TraderDecision; metadata?: any };
-    risk_manager?: { analysis: RiskManagerDecision; metadata?: any };
-  };
-  final_decision: FinalDecision | null;
-  total_cost: number;
-  total_tokens: number;
+  result: DecisionResult;
+  portfolio_updated: boolean;
+  trade_executed?: Trade;
   portfolio_snapshot?: PortfolioSnapshot;
   errors?: Array<{ type: string; message: string }>;
+}
+
+// Config Types (Phase 6)
+export interface EngineInfo {
+  type: string;
+  name: string;
+  description: string;
+  cost_per_decision: number;
+  avg_latency_ms: number;
+  supports_realtime: boolean;
+}
+
+export interface TradingModeResponse {
+  mode: string;
+  engine_info: EngineInfo;
+  rule_strategy?: string;
+}
+
+export interface EngineCapabilitiesResponse {
+  available_engines: EngineInfo[];
+  current_mode: string;
 }
 
 // Portfolio types
@@ -149,13 +216,16 @@ export interface TradesResponse {
   total: number;
 }
 
-// Backtest types
+// Backtest types (Phase 6 - Unified)
 export interface BacktestRequest {
   symbol: string;
   start_date: string;
   end_date: string;
-  timeframe: string;
-  max_decisions?: number;
+  timeframe?: string;
+  initial_capital?: number;
+  engine_type?: string;  // "llm" | "vectorbt"
+  strategy?: string;     // For VectorBT: "rsi_macd" | "ema_crossover" | "bb_volume"
+  max_decisions?: number; // For LLM: limit decision count to control costs
 }
 
 export interface BacktestMetrics {
@@ -163,23 +233,47 @@ export interface BacktestMetrics {
   total_return_pct: number;
   max_drawdown: number;
   max_drawdown_pct: number;
-  num_trades: number;
+  sharpe_ratio?: number | null;
+  sortino_ratio?: number | null;
   win_rate: number;
-  sharpe_ratio?: number;
+  num_trades: number;
+  avg_trade_return: number;
+  best_trade: number;
+  worst_trade: number;
+  profit_factor?: number | null;
 }
 
 export interface EquityPoint {
   timestamp: string;
   equity: number;
+  cash: number;
+  positions_value: number;
 }
 
-export interface BacktestResponse {
+export interface BacktestTrade {
+  timestamp: string;
+  side: string;
+  quantity: number;
+  price: number;
+  pnl: number;
+}
+
+export interface BacktestResult {
   run_id: string;
   symbol: string;
   start_date: string;
   end_date: string;
   timeframe: string;
+  initial_capital: number;
+  final_equity: number;
   metrics: BacktestMetrics;
   equity_curve: EquityPoint[];
-  trades: Trade[];
+  trades: BacktestTrade[];
+  engine_type: string;
+  strategy_name?: string;
+  execution_time_ms: number;
+}
+
+export interface BacktestResponse {
+  result: BacktestResult;
 }

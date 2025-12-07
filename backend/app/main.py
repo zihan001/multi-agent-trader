@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routes import market, portfolio, analysis, backtest
+from app.routes import market, portfolio, analysis, backtest, config
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -49,13 +49,16 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "environment": settings.environment
+        "environment": settings.environment,
+        "trading_mode": settings.trading_mode,
+        "rule_strategy": settings.rule_strategy if settings.trading_mode == "rule" else None
     }
 
 
 # Include API routers
 app.include_router(market.router, prefix="/market", tags=["market"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
+app.include_router(config.router)
 app.include_router(analysis.router)
 app.include_router(backtest.router)
 

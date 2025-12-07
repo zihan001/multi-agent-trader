@@ -1,11 +1,15 @@
 """
 VectorBT-based backtesting engine for fast, vectorized strategy testing.
 """
+import os
 import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import pandas as pd
 import numpy as np
+
+# Disable VectorBT plotting to avoid Plotly version conflicts
+os.environ["VECTORBT_SUPPRESS_WARNINGS"] = "1"
 
 try:
     import vectorbt as vbt
@@ -116,19 +120,34 @@ class VectorBTEngine(BaseBacktestEngine):
         
         df.set_index("timestamp", inplace=True)
         
-        # Calculate indicators
-        indicator_service = IndicatorService()
-        indicators = indicator_service.calculate_all_indicators(df)
+        # Calculate indicators - need full series for backtesting
+        from app.services.indicators import (
+            calculate_rsi, calculate_macd, calculate_ema, 
+            calculate_bollinger_bands, calculate_sma
+        )
         
-        # Add indicators to dataframe
-        df["rsi"] = indicators["rsi"]
-        df["macd"] = indicators["macd"]
-        df["macd_signal"] = indicators["macd_signal"]
-        df["ema_fast"] = indicators["ema_12"]
-        df["ema_slow"] = indicators["ema_26"]
-        df["ema_trend"] = indicators.get("ema_50", indicators["ema_26"])
-        df["bb_upper"] = indicators["bb_upper"]
-        df["bb_lower"] = indicators["bb_lower"]
+        # RSI
+        df["rsi"] = calculate_rsi(df, 14)
+        
+        # MACD
+        macd_data = calculate_macd(df)
+        df["macd"] = macd_data["macd"]
+        df["macd_signal"] = macd_data["macd_signal"]
+        df["macd_hist"] = macd_data["macd_diff"]
+        
+        # EMAs
+        df["ema_fast"] = calculate_ema(df, settings.ema_fast)
+        df["ema_slow"] = calculate_ema(df, settings.ema_slow)
+        df["ema_trend"] = calculate_ema(df, settings.ema_trend)
+        
+        # Bollinger Bands
+        bb_data = calculate_bollinger_bands(df)
+        df["bb_upper"] = bb_data["bb_high"]
+        df["bb_middle"] = bb_data["bb_mid"]
+        df["bb_lower"] = bb_data["bb_low"]
+        
+        # Volume moving average for BB+Volume strategy
+        df["volume_ma"] = df["volume"].rolling(window=settings.bb_period).mean()
         
         # Generate signals based on strategy
         if self.strategy == "rsi_macd":
@@ -152,13 +171,15 @@ class VectorBTEngine(BaseBacktestEngine):
         
         # Extract trades
         trades = []
-        for trade_record in portfolio.trades.records:
+        trade_records = portfolio.trades.records_readable
+        for i in range(len(trade_records)):
+            trade = trade_records.iloc[i]
             trades.append({
-                "timestamp": df.index[trade_record["entry_idx"]],
-                "side": "BUY" if trade_record["size"] > 0 else "SELL",
-                "quantity": abs(trade_record["size"]),
-                "price": trade_record["entry_price"],
-                "pnl": trade_record["pnl"]
+                "timestamp": trade["Entry Timestamp"] if "Entry Timestamp" in trade else trade.name,
+                "side": "BUY" if trade["Size"] > 0 else "SELL",
+                "quantity": abs(trade["Size"]),
+                "price": trade["Entry Price"],
+                "pnl": trade["PnL"]
             })
         
         # Build equity curve
@@ -174,20 +195,37 @@ class VectorBTEngine(BaseBacktestEngine):
         # Calculate metrics using VectorBT stats
         stats = portfolio.stats()
         
+        # Helper to safely convert stats values (handle NaN, inf)
+        def safe_float(key, default=0.0):
+            if key not in stats:
+                return default
+            val = float(stats[key])
+            if np.isnan(val) or np.isinf(val):
+                return default
+            return val
+        
+        def safe_float_optional(key):
+            if key not in stats:
+                return None
+            val = float(stats[key])
+            if np.isnan(val) or np.isinf(val):
+                return None
+            return val
+        
         from app.backtesting.base import BacktestMetrics
         metrics = BacktestMetrics(
-            total_return=float(stats["Total Return"]) if "Total Return" in stats else 0.0,
-            total_return_pct=float(stats["Total Return [%]"]) if "Total Return [%]" in stats else 0.0,
-            max_drawdown=float(stats["Max Drawdown"]) if "Max Drawdown" in stats else 0.0,
-            max_drawdown_pct=float(stats["Max Drawdown [%]"]) if "Max Drawdown [%]" in stats else 0.0,
-            sharpe_ratio=float(stats["Sharpe Ratio"]) if "Sharpe Ratio" in stats else None,
-            sortino_ratio=float(stats["Sortino Ratio"]) if "Sortino Ratio" in stats else None,
-            win_rate=float(stats["Win Rate [%]"]) if "Win Rate [%]" in stats else 0.0,
-            num_trades=int(stats["Total Trades"]) if "Total Trades" in stats else 0,
-            avg_trade_return=float(stats["Avg Winning Trade [%]"]) if "Avg Winning Trade [%]" in stats else 0.0,
-            best_trade=float(stats["Best Trade [%]"]) if "Best Trade [%]" in stats else 0.0,
-            worst_trade=float(stats["Worst Trade [%]"]) if "Worst Trade [%]" in stats else 0.0,
-            profit_factor=float(stats["Profit Factor"]) if "Profit Factor" in stats else None
+            total_return=safe_float("Total Return"),
+            total_return_pct=safe_float("Total Return [%]"),
+            max_drawdown=safe_float("Max Drawdown"),
+            max_drawdown_pct=safe_float("Max Drawdown [%]"),
+            sharpe_ratio=safe_float_optional("Sharpe Ratio"),
+            sortino_ratio=safe_float_optional("Sortino Ratio"),
+            win_rate=safe_float("Win Rate [%]"),
+            num_trades=int(stats.get("Total Trades", 0)),
+            avg_trade_return=safe_float("Avg Winning Trade [%]"),
+            best_trade=safe_float("Best Trade [%]"),
+            worst_trade=safe_float("Worst Trade [%]"),
+            profit_factor=safe_float_optional("Profit Factor")
         )
         
         execution_time_ms = (time.time() - start_time) * 1000

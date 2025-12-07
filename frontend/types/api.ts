@@ -1,6 +1,8 @@
 // Health check
 export interface HealthResponse {
   status: string;
+  trading_mode?: string;
+  rule_strategy?: string;
 }
 
 // Market data types
@@ -83,6 +85,60 @@ export interface FinalDecision {
   approved: boolean;
 }
 
+// Unified Decision Types (Phase 6)
+export interface SignalData {
+  indicator: string;
+  value: number;
+  threshold?: number;
+  signal: string;
+}
+
+export interface TradingDecision {
+  action: string;
+  symbol: string;
+  quantity?: number;
+  price?: number;
+  confidence: number;
+  reasoning: string[];
+  approved: boolean;
+}
+
+export interface DecisionMetadata {
+  engine_type: string;
+  model_used?: string;
+  strategy_name?: string;
+  total_cost: number;
+  total_tokens?: number;
+  execution_time_ms: number;
+}
+
+export interface AgentOutput {
+  analysis: any;
+  metadata: {
+    model: string;
+    tokens: number;
+    cost: number;
+    latency: number;
+  };
+}
+
+export interface DecisionResult {
+  run_id: string;
+  symbol: string;
+  timestamp: string;
+  decision: TradingDecision;
+  metadata: DecisionMetadata;
+  agents?: {
+    technical?: AgentOutput;
+    sentiment?: AgentOutput;
+    tokenomics?: AgentOutput;
+    researcher?: AgentOutput;
+    trader?: AgentOutput;
+    risk_manager?: AgentOutput;
+  };
+  signals?: Record<string, SignalData>;
+}
+
 export interface AnalysisRequest {
   symbol: string;
   mode?: 'live' | 'backtest_step';
@@ -90,23 +146,32 @@ export interface AnalysisRequest {
 }
 
 export interface AnalysisResponse {
-  run_id: string;
-  symbol: string;
-  timestamp: string;
-  status: string;
-  agents: {
-    technical?: { analysis: TechnicalAnalysis; metadata?: any };
-    sentiment?: { analysis: SentimentAnalysis; metadata?: any };
-    tokenomics?: { analysis: TokenomicsAnalysis; metadata?: any };
-    researcher?: { analysis: ResearcherThesis; metadata?: any };
-    trader?: { analysis: TraderDecision; metadata?: any };
-    risk_manager?: { analysis: RiskManagerDecision; metadata?: any };
-  };
-  final_decision: FinalDecision | null;
-  total_cost: number;
-  total_tokens: number;
+  result: DecisionResult;
+  portfolio_updated: boolean;
+  trade_executed?: Trade;
   portfolio_snapshot?: PortfolioSnapshot;
   errors?: Array<{ type: string; message: string }>;
+}
+
+// Config Types (Phase 6)
+export interface EngineInfo {
+  type: string;
+  name: string;
+  description: string;
+  cost_per_decision: number;
+  avg_latency_ms: number;
+  supports_realtime: boolean;
+}
+
+export interface TradingModeResponse {
+  mode: string;
+  engine_info: EngineInfo;
+  rule_strategy?: string;
+}
+
+export interface EngineCapabilitiesResponse {
+  available_engines: EngineInfo[];
+  current_mode: string;
 }
 
 // Portfolio types

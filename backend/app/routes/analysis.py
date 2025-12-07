@@ -49,20 +49,21 @@ async def run_analysis(
     try:
         # Validate symbol
         symbol = request.symbol.upper()
+        timeframe = "1h"  # Default timeframe for analysis
         
         # Fetch latest market data
         binance_service = BinanceService()
         
         try:
             # Get recent candles (last 100 for indicators)
-            candles = get_latest_candles(db, symbol, request.timeframe, limit=100)
+            candles = get_latest_candles(db, symbol, timeframe, limit=100)
             
             # If not enough candles in DB, fetch from Binance
             if len(candles) < 50:
                 print(f"Fetching fresh data for {symbol} from Binance...")
                 klines = await binance_service.fetch_klines(
                     symbol=symbol,
-                    interval=request.timeframe,
+                    interval=timeframe,
                     limit=100
                 )
                 
@@ -111,7 +112,7 @@ async def run_analysis(
         
         market_data = {
             "symbol": symbol,
-            "timeframe": request.timeframe,
+            "timeframe": timeframe,
             "current_price": current_price,
             "price_change_24h": price_change_24h,
             "volume_24h": float(ticker_24h.get("volume", 0)),

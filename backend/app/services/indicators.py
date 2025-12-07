@@ -9,6 +9,7 @@ from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands, AverageTrueRange
 from ta.volume import OnBalanceVolumeIndicator
 from app.models.database import Candle
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,7 @@ class IndicatorService:
             'high': float(df['high'].iloc[latest_idx]),
             'low': float(df['low'].iloc[latest_idx]),
             'volume': float(df['volume'].iloc[latest_idx]),
+            'current_volume': float(df['volume'].iloc[latest_idx]),
             
             # Moving averages
             'ema_9': float(calculate_ema(df, 9).iloc[latest_idx]),
@@ -192,6 +194,8 @@ class IndicatorService:
             'macd': float(macd_data['macd'].iloc[latest_idx]),
             'macd_signal': float(macd_data['macd_signal'].iloc[latest_idx]),
             'macd_diff': float(macd_data['macd_diff'].iloc[latest_idx]),
+            'macd_histogram': float(macd_data['macd_diff'].iloc[latest_idx]),
+            'macd_histogram_prev': float(macd_data['macd_diff'].iloc[latest_idx - 1]) if len(df) > 1 else 0.0,
             
             # Volatility
             'atr_14': float(calculate_atr(df, 14).iloc[latest_idx]),
@@ -207,6 +211,7 @@ class IndicatorService:
             
             # Volume
             'obv': float(calculate_obv(df).iloc[latest_idx]),
+            'volume_ma': float(df['volume'].rolling(window=settings.volume_ma_period).mean().iloc[latest_idx]),
             
             # Trend assessment
             'trend': self._assess_trend(df),

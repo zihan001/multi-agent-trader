@@ -104,8 +104,17 @@ class LLMBacktestEngine(BaseBacktestEngine):
             raise ValueError(f"No historical data found for {symbol}")
         
         # Initialize portfolio manager with separate backtest run
-        portfolio_manager = PortfolioManager(self.db)
-        portfolio_manager.initialize_portfolio(initial_capital, run_id)
+        from app.models.database import PortfolioSnapshot
+        snapshot = PortfolioSnapshot(
+            timestamp=datetime.utcnow(),
+            total_equity=initial_capital,
+            cash_balance=initial_capital,
+            run_id=run_id
+        )
+        self.db.add(snapshot)
+        self.db.commit()
+        
+        portfolio_manager = PortfolioManager(self.db, run_id)
         
         # Create decision engine
         engine = DecisionEngineFactory.create(self.db)

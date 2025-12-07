@@ -153,6 +153,15 @@ Respond ONLY with valid JSON."""
             if assessment.get("final_trade", {}).get("action") not in valid_actions:
                 assessment["final_trade"]["action"] = "hold"
             
+            # Ensure take_profit and stop_loss are single values, not lists
+            final_trade = assessment.get("final_trade", {})
+            if isinstance(final_trade.get("take_profit"), list):
+                # Take the first value if it's a list
+                final_trade["take_profit"] = float(final_trade["take_profit"][0]) if final_trade["take_profit"] else None
+            if isinstance(final_trade.get("stop_loss"), list):
+                # Take the first value if it's a list
+                final_trade["stop_loss"] = float(final_trade["stop_loss"][0]) if final_trade["stop_loss"] else None
+            
             return assessment
             
         except json.JSONDecodeError:

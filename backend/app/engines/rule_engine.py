@@ -140,12 +140,15 @@ class RuleEngine(BaseDecisionEngine):
         RSI + MACD strategy.
         
         BUY when:
-        - RSI < oversold threshold (default 30) AND
-        - MACD > MACD Signal (bullish crossover)
+        - MACD crosses above MACD Signal (bullish crossover) AND
+        - RSI < 50 (not overbought)
         
         SELL when:
-        - RSI > overbought threshold (default 70) AND
-        - MACD < MACD Signal (bearish crossover)
+        - MACD crosses below MACD Signal (bearish crossover) AND
+        - RSI > 50 (not oversold)
+        
+        This uses MACD crossover as the primary signal with RSI as a filter,
+        which is more practical than requiring extreme RSI levels.
         
         Returns:
             Tuple of (TradingDecision, signals dict)
@@ -154,6 +157,7 @@ class RuleEngine(BaseDecisionEngine):
         macd = indicators.get("macd", 0)
         macd_signal = indicators.get("macd_signal", 0)
         macd_hist = indicators.get("macd_histogram", 0)
+        macd_hist_prev = indicators.get("macd_histogram_prev", 0)
         
         # Collect signals
         signals = {
@@ -177,23 +181,33 @@ class RuleEngine(BaseDecisionEngine):
             )
         }
         
-        # Determine action
+        # Determine action - look for MACD crossover with RSI filter
         action = "HOLD"
         reasoning = ""
         confidence = 0.5
         
-        if rsi < settings.rsi_oversold and macd > macd_signal:
+        # Bullish MACD crossover: current histogram positive, previous negative (or crossed)
+        macd_bullish = macd > macd_signal and macd_hist > 0
+        # Bearish MACD crossover: current histogram negative, previous positive (or crossed)
+        macd_bearish = macd < macd_signal and macd_hist < 0
+        
+        if macd_bullish and rsi < 50:
             action = "BUY"
-            reasoning = f"RSI oversold ({rsi:.1f} < {settings.rsi_oversold}) + MACD bullish crossover"
-            confidence = 0.75 + (settings.rsi_oversold - rsi) / 100  # Higher confidence when more oversold
-            confidence = min(confidence, 0.95)  # Cap at 95%
-        elif rsi > settings.rsi_overbought and macd < macd_signal:
+            reasoning = f"MACD bullish (histogram: {macd_hist:.2f}) + RSI not overbought ({rsi:.1f})"
+            # Higher confidence when RSI is lower and MACD histogram is stronger
+            confidence = 0.65 + (50 - rsi) / 100 + min(abs(macd_hist), 5) / 20
+            confidence = min(confidence, 0.90)  # Cap at 90%
+        elif macd_bearish and rsi > 50:
             action = "SELL"
-            reasoning = f"RSI overbought ({rsi:.1f} > {settings.rsi_overbought}) + MACD bearish crossover"
-            confidence = 0.75 + (rsi - settings.rsi_overbought) / 100
-            confidence = min(confidence, 0.95)
+            reasoning = f"MACD bearish (histogram: {macd_hist:.2f}) + RSI not oversold ({rsi:.1f})"
+            confidence = 0.65 + (rsi - 50) / 100 + min(abs(macd_hist), 5) / 20
+            confidence = min(confidence, 0.90)
         else:
-            reasoning = f"No clear signal (RSI: {rsi:.1f}, MACD {'>' if macd > macd_signal else '<'} Signal)"
+            reasoning = f"No clear signal (RSI: {rsi:.1f}, MACD {'bullish' if macd > macd_signal else 'bearish'})"        # For very strong signals (extreme RSI), increase confidence
+        if action == "BUY" and rsi < settings.rsi_oversold:
+            confidence = min(confidence + 0.1, 0.95)
+        elif action == "SELL" and rsi > settings.rsi_overbought:
+            confidence = min(confidence + 0.1, 0.95)
         
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)

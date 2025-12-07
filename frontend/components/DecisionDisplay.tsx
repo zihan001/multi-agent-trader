@@ -130,10 +130,10 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                   <span className="ml-2 text-sm">{agents.technical.analysis.momentum}</span>
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white">Signals:</span>
+                  <span className="text-sm font-medium text-white">Key Observations:</span>
                   <ul className="list-disc list-inside ml-4 mt-1">
-                    {agents.technical.analysis.signals.map((signal: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{signal}</li>
+                    {(agents.technical.analysis.key_observations || []).map((observation: string, idx: number) => (
+                      <li key={idx} className="text-sm text-gray-300">{observation}</li>
                     ))}
                   </ul>
                 </div>
@@ -160,10 +160,10 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                   <span className="ml-2 text-sm">{agents.sentiment.analysis.sentiment}</span>
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white">Narrative Points:</span>
+                  <span className="text-sm font-medium text-white">Key Observations:</span>
                   <ul className="list-disc list-inside ml-4 mt-1">
-                    {agents.sentiment.analysis.narrative_points.map((point: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{point}</li>
+                    {(agents.sentiment.analysis.key_observations || []).map((observation: string, idx: number) => (
+                      <li key={idx} className="text-sm text-gray-300">{observation}</li>
                     ))}
                   </ul>
                 </div>
@@ -186,10 +186,10 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                   <span className="ml-2 text-sm">{agents.tokenomics.analysis.outlook}</span>
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white">Key Points:</span>
+                  <span className="text-sm font-medium text-white">Key Risks:</span>
                   <ul className="list-disc list-inside ml-4 mt-1">
-                    {agents.tokenomics.analysis.key_points.map((point: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{point}</li>
+                    {(agents.tokenomics.analysis.key_risks || []).map((risk: string, idx: number) => (
+                      <li key={idx} className="text-sm text-gray-300">{risk}</li>
                     ))}
                   </ul>
                 </div>
@@ -216,10 +216,10 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                   <span className="ml-2 text-sm">{(agents.researcher.analysis.confidence * 100).toFixed(1)}%</span>
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-white">Top Risks:</span>
+                  <span className="text-sm font-medium text-white">Bull Cases:</span>
                   <ul className="list-disc list-inside ml-4 mt-1">
-                    {agents.researcher.analysis.top_risks.map((risk: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{risk}</li>
+                    {(agents.researcher.analysis.key_bull_cases || []).map((bullCase: string, idx: number) => (
+                      <li key={idx} className="text-sm text-gray-300">{bullCase}</li>
                     ))}
                   </ul>
                 </div>
@@ -259,11 +259,15 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 )}
                 <div>
                   <span className="text-sm font-medium text-white">Reasoning:</span>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    {agents.trader.analysis.reasoning.map((reason: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{reason}</li>
-                    ))}
-                  </ul>
+                  {typeof agents.trader.analysis.reasoning === 'string' ? (
+                    <p className="text-sm text-gray-300 mt-1">{agents.trader.analysis.reasoning}</p>
+                  ) : (
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {(agents.trader.analysis.reasoning || []).map((reason: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{reason}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>

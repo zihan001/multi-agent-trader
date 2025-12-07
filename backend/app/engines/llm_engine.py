@@ -17,6 +17,7 @@ from app.models.decisions import (
 )
 from app.agents.pipeline import AgentPipeline
 from app.agents.llm_client import LLMClient
+from app.core.config import settings
 
 
 class LLMDecisionEngine(BaseDecisionEngine):
@@ -168,7 +169,7 @@ class LLMDecisionEngine(BaseDecisionEngine):
             execution_time_ms=execution_time_ms,
             cost=pipeline_result.get("total_cost", 0.0),
             tokens_used=pipeline_result.get("total_tokens", 0),
-            model_name=f"cheap: {self.llm_client.cheap_model}, strong: {self.llm_client.strong_model}",
+            model_name=f"cheap: {settings.cheap_model}, strong: {settings.strong_model}",
             timestamp=datetime.fromisoformat(pipeline_result.get("timestamp", datetime.utcnow().isoformat()))
         )
         
@@ -222,7 +223,7 @@ class LLMDecisionEngine(BaseDecisionEngine):
                 "Risk Manager"
             ],
             "models": {
-                "cheap": self.llm_client.cheap_model,
-                "strong": self.llm_client.strong_model
+                "cheap": settings.cheap_model,
+                "strong": settings.strong_model
             }
         }

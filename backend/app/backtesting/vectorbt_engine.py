@@ -171,16 +171,31 @@ class VectorBTEngine(BaseBacktestEngine):
         
         # Extract trades
         trades = []
-        trade_records = portfolio.trades.records_readable
-        for i in range(len(trade_records)):
-            trade = trade_records.iloc[i]
-            trades.append({
-                "timestamp": trade["Entry Timestamp"] if "Entry Timestamp" in trade else trade.name,
-                "side": "BUY" if trade["Size"] > 0 else "SELL",
-                "quantity": abs(trade["Size"]),
-                "price": trade["Entry Price"],
-                "pnl": trade["PnL"]
-            })
+        try:
+            trade_records = portfolio.trades.records_readable
+            if len(trade_records) > 0:
+                for i in range(len(trade_records)):
+                    trade = trade_records.iloc[i]
+                    # Handle different column name formats
+                    entry_idx = trade.get("Entry Index", trade.get("Entry Idx", None))
+                    exit_idx = trade.get("Exit Index", trade.get("Exit Idx", None))
+                    
+                    # Get timestamp from index
+                    if entry_idx is not None and entry_idx < len(df):
+                        timestamp = df.index[int(entry_idx)]
+                    else:
+                        timestamp = df.index[0]
+                    
+                    trades.append({
+                        "timestamp": timestamp,
+                        "side": "BUY" if trade.get("Size", 0) > 0 else "SELL",
+                        "quantity": abs(trade.get("Size", 0)),
+                        "price": trade.get("Avg Entry Price", trade.get("Entry Price", df["close"].iloc[int(entry_idx)] if entry_idx is not None else 0)),
+                        "pnl": trade.get("PnL", trade.get("Return", 0))
+                    })
+        except Exception as e:
+            # If trade extraction fails, continue with empty trades list
+            print(f"Warning: Could not extract trades: {e}")
         
         # Build equity curve
         equity_curve = []
@@ -247,42 +262,59 @@ class VectorBTEngine(BaseBacktestEngine):
         )
     
     def _rsi_macd_signals(self, df: pd.DataFrame) -> tuple:
-        """Generate RSI + MACD entry/exit signals."""
-        entries = (
-            (df["rsi"] < settings.rsi_oversold) &
-            (df["macd"] > df["macd_signal"])
-        )
-        exits = (
-            (df["rsi"] > settings.rsi_overbought) &
-            (df["macd"] < df["macd_signal"])
-        )
+        """
+        Generate RSI + MACD entry/exit signals.
+        
+        Uses MACD crossover as primary signal with RSI as filter:
+        - BUY on bullish MACD crossover when RSI < 50 (not overbought)
+        - SELL on bearish MACD crossover when RSI > 50 (not oversold)
+        """
+        # Detect MACD crossovers
+        macd_above_signal = df["macd"] > df["macd_signal"]
+        macd_above_signal_prev = macd_above_signal.shift(1).fillna(False)
+        
+        # Bullish crossover: MACD crosses above signal
+        macd_bullish_cross = (~macd_above_signal_prev) & macd_above_signal
+        # Bearish crossover: MACD crosses below signal  
+        macd_bearish_cross = macd_above_signal_prev & (~macd_above_signal)
+        
+        # Apply RSI filter (handle NaN in RSI)
+        rsi_valid = df["rsi"].notna()
+        entries = macd_bullish_cross & (df["rsi"] < 50) & rsi_valid
+        exits = macd_bearish_cross & (df["rsi"] > 50) & rsi_valid
+        
         return entries, exits
     
     def _ema_crossover_signals(self, df: pd.DataFrame) -> tuple:
         """Generate EMA crossover entry/exit signals."""
         fast_above_slow = df["ema_fast"] > df["ema_slow"]
-        fast_above_slow_prev = fast_above_slow.shift(1)
+        fast_above_slow_prev = fast_above_slow.shift(1).fillna(False)
         
         entries = (
-            ~fast_above_slow_prev & fast_above_slow &
+            (~fast_above_slow_prev) & fast_above_slow &
             (df["close"] > df["ema_trend"])
         )
         exits = (
-            fast_above_slow_prev & ~fast_above_slow
+            fast_above_slow_prev & (~fast_above_slow)
         )
         return entries, exits
     
     def _bb_volume_signals(self, df: pd.DataFrame) -> tuple:
         """Generate Bollinger Bands + Volume signals."""
         volume_ma = df["volume"].rolling(window=settings.bb_period).mean()
-        volume_ratio = df["volume"] / volume_ma
+        volume_ratio = (df["volume"] / volume_ma).fillna(0)
+        
+        # Handle NaN in BB values
+        bb_valid = df["bb_lower"].notna() & df["bb_upper"].notna()
         
         entries = (
             (df["close"] <= df["bb_lower"]) &
-            (volume_ratio >= settings.min_volume_ratio)
+            (volume_ratio >= settings.volume_surge_threshold) &
+            bb_valid
         )
         exits = (
             (df["close"] >= df["bb_upper"]) &
-            (volume_ratio >= settings.min_volume_ratio)
+            (volume_ratio >= settings.volume_surge_threshold) &
+            bb_valid
         )
         return entries, exits

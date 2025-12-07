@@ -95,12 +95,14 @@ export interface SignalData {
 
 export interface TradingDecision {
   action: string;
-  symbol: string;
+  symbol?: string;
   quantity?: number;
   price?: number;
   confidence: number;
-  reasoning: string[];
-  approved: boolean;
+  reasoning: string | string[];  // Can be string (rule mode) or array (LLM mode)
+  approved?: boolean;
+  stop_loss?: number;
+  take_profit?: number;
 }
 
 export interface DecisionMetadata {

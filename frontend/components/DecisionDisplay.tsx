@@ -71,11 +71,15 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
         {/* Reasoning */}
         <div>
           <p className="text-sm text-gray-600 mb-2">Reasoning</p>
-          <ul className="list-disc list-inside space-y-1">
-            {decision.reasoning.map((reason, idx) => (
-              <li key={idx} className="text-sm">{reason}</li>
-            ))}
-          </ul>
+          {typeof decision.reasoning === 'string' ? (
+            <p className="text-sm">{decision.reasoning}</p>
+          ) : (
+            <ul className="list-disc list-inside space-y-1">
+              {decision.reasoning.map((reason: string, idx: number) => (
+                <li key={idx} className="text-sm">{reason}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

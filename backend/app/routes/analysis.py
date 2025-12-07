@@ -1,5 +1,5 @@
 """
-Analysis API endpoints for running the agent pipeline.
+Analysis API endpoints for running decision engines.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,59 +8,43 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 from app.core.database import get_db
-from app.agents.pipeline import AgentPipeline
+from app.engines.factory import DecisionEngineFactory
+from app.models.decisions import AnalysisRequest, AnalysisResponse, DecisionResult
 from app.services.binance import BinanceService, get_latest_candles
 from app.services.indicators import IndicatorService
 from app.services.portfolio import PortfolioManager
+from app.core.config import settings
 import pandas as pd
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 
 
-class AnalyzeRequest(BaseModel):
-    """Request model for analysis endpoint."""
-    symbol: str = Field(..., description="Trading pair symbol (e.g., BTCUSDT)")
-    mode: str = Field(default="live", description="Analysis mode: 'live' or 'backtest_step'")
-    timestamp: Optional[str] = Field(None, description="Optional timestamp for backtest mode (ISO format)")
-    timeframe: str = Field(default="1h", description="Candle timeframe")
-
-
-class AnalyzeResponse(BaseModel):
-    """Response model for analysis endpoint."""
-    run_id: str
-    symbol: str
-    timestamp: str
-    status: str
-    agents: Dict[str, Any]
-    final_decision: Optional[Dict[str, Any]]
-    total_cost: float
-    total_tokens: int
-    portfolio_snapshot: Dict[str, Any]
-    errors: list
-
-
-@router.post("", response_model=AnalyzeResponse)
+@router.post("", response_model=AnalysisResponse)
 async def run_analysis(
-    request: AnalyzeRequest,
+    request: AnalysisRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Run the full agent pipeline for market analysis and trading decision.
+    Run decision engine for market analysis and trading decision.
     
     This endpoint:
     1. Fetches latest market data for the symbol
     2. Calculates technical indicators
-    3. Runs all agents (Technical, Sentiment, Tokenomics, Researcher, Trader, Risk)
+    3. Runs decision engine (LLM agents OR rule-based strategy)
     4. Executes approved trades (simulated)
     5. Updates portfolio
     6. Returns comprehensive analysis results
+    
+    The engine type is determined by settings.trading_mode:
+    - "llm": Six-agent LLM system with natural language reasoning
+    - "rule": Deterministic technical indicator strategies (zero cost)
     
     Args:
         request: Analysis request parameters
         db: Database session
         
     Returns:
-        Complete analysis results with agent outputs and final decision
+        AnalysisResponse with unified decision result
     """
     try:
         # Validate symbol
@@ -141,34 +125,42 @@ async def run_analysis(
         portfolio_manager = PortfolioManager(db)
         portfolio_data = portfolio_manager.get_portfolio_summary()
         
-        # Run agent pipeline
-        pipeline = AgentPipeline(db)
+        # Create decision engine using factory pattern
+        engine = DecisionEngineFactory.create(db)
         
-        result = await pipeline.arun(
+        # Generate run ID
+        run_id = f"run_{datetime.utcnow().isoformat()}"
+        
+        # Run decision engine (works for both LLM and rule modes)
+        result: DecisionResult = await engine.aanalyze(
             symbol=symbol,
             market_data=market_data,
             portfolio_data=portfolio_data,
-            run_id=None,  # Auto-generate
+            run_id=run_id,
         )
         
         # Execute approved trade if action is BUY or SELL
-        final_decision = result.get("final_decision")
+        trade_executed = None
+        decision = result.decision
         
-        if final_decision and final_decision.get("action") in ["buy", "sell", "BUY", "SELL"]:
+        if decision.action in ["BUY", "SELL"]:
             try:
-                # Normalize action to uppercase
-                action = final_decision["action"].upper()
-                
                 portfolio_manager.execute_trade(
                     symbol=symbol,
-                    side=action,
-                    quantity=final_decision.get("quantity", 0),
+                    side=decision.action,
+                    quantity=decision.quantity,
                     price=current_price,
                 )
-                print(f"Executed trade: {action} {symbol}")
+                print(f"[{run_id}] Executed trade: {decision.action} {decision.quantity} {symbol}")
+                trade_executed = {
+                    "symbol": symbol,
+                    "action": decision.action,
+                    "quantity": decision.quantity,
+                    "price": current_price,
+                }
             except Exception as trade_error:
-                print(f"Error executing trade: {trade_error}")
-                result["errors"].append({
+                print(f"[{run_id}] Error executing trade: {trade_error}")
+                result.errors.append({
                     "type": "trade_execution_error",
                     "message": str(trade_error)
                 })
@@ -176,17 +168,10 @@ async def run_analysis(
         # Get updated portfolio
         updated_portfolio = portfolio_manager.get_portfolio_summary()
         
-        return AnalyzeResponse(
-            run_id=result["run_id"],
-            symbol=result["symbol"],
-            timestamp=result["timestamp"],
-            status=result["status"],
-            agents=result["agents"],
-            final_decision=result["final_decision"],
-            total_cost=result.get("total_cost", 0.0),
-            total_tokens=result.get("total_tokens", 0),
-            portfolio_snapshot=updated_portfolio["summary"],
-            errors=result["errors"],
+        return AnalysisResponse(
+            result=result,
+            portfolio_updated=trade_executed is not None,
+            trade_executed=trade_executed,
         )
         
     except HTTPException:

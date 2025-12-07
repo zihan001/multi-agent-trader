@@ -84,24 +84,15 @@ class VectorBTEngine(BaseBacktestEngine):
         if len(candles) < 50:
             # Fetch from Binance if not in DB
             binance = BinanceService()
-            klines = binance.fetch_klines_sync(
+            # Use get_historical_klines for proper pagination across long date ranges
+            formatted_klines = binance.get_historical_klines(
                 symbol=symbol,
                 interval=timeframe,
-                start_time=int(start_date.timestamp() * 1000),
-                end_time=int(end_date.timestamp() * 1000)
+                start_time=start_date,
+                end_time=end_date
             )
             
-            df = pd.DataFrame([
-                {
-                    "timestamp": datetime.fromtimestamp(k[0] / 1000),
-                    "open": float(k[1]),
-                    "high": float(k[2]),
-                    "low": float(k[3]),
-                    "close": float(k[4]),
-                    "volume": float(k[5]),
-                }
-                for k in klines
-            ])
+            df = pd.DataFrame(formatted_klines)
         else:
             df = pd.DataFrame([
                 {

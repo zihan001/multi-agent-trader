@@ -1,25 +1,57 @@
 'use client';
 
-import { useState } from 'react';
-import { runBacktest } from '@/lib/api';
-import type { BacktestResponse } from '@/types/api';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { format } from 'date-fns';
-import { PlayCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { runBacktest, getTradingMode, getEngineCapabilities } from '@/lib/api';
+import type { BacktestResult, TradingModeResponse, EngineCapabilitiesResponse } from '@/types/api';
+import BacktestResults from '@/components/BacktestResults';
+import { PlayCircle, Info } from 'lucide-react';
 
 export default function Backtest() {
+  // Form state
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [startDate, setStartDate] = useState('2025-01-01');
-  const [endDate, setEndDate] = useState('2025-11-17');
+  const [startDate, setStartDate] = useState('2024-01-01');
+  const [endDate, setEndDate] = useState('2024-01-07');
   const [timeframe, setTimeframe] = useState('1h');
+  const [initialCapital, setInitialCapital] = useState('10000');
+  const [engineType, setEngineType] = useState<string>('vectorbt');
+  const [strategy, setStrategy] = useState('rsi_macd');
   const [maxDecisions, setMaxDecisions] = useState('50');
   
-  const [result, setResult] = useState<BacktestResponse | null>(null);
+  // Results state
+  const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Config state
+  const [tradingMode, setTradingMode] = useState<TradingModeResponse | null>(null);
+  const [capabilities, setCapabilities] = useState<EngineCapabilitiesResponse | null>(null);
 
   const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT'];
   const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
+  const strategies = [
+    { value: 'rsi_macd', label: 'RSI + MACD Momentum', description: 'Buy on oversold RSI with MACD bullish, sell on overbought' },
+    { value: 'ema_crossover', label: 'EMA Crossover Trend', description: 'Golden/death cross with trend confirmation' },
+    { value: 'bb_volume', label: 'Bollinger Bands + Volume', description: 'Band touch with volume surge breakouts' },
+  ];
+
+  // Load config on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const [modeData, capData] = await Promise.all([
+          getTradingMode(),
+          getEngineCapabilities(),
+        ]);
+        setTradingMode(modeData);
+        setCapabilities(capData);
+        // Default to current trading mode
+        setEngineType(modeData.mode === 'llm' ? 'llm' : 'vectorbt');
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      }
+    };
+    loadConfig();
+  }, []);
 
   const handleRunBacktest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,47 +60,135 @@ export default function Backtest() {
     setResult(null);
 
     try {
-      const data = await runBacktest({
+      const response = await runBacktest({
         symbol,
         start_date: startDate,
         end_date: endDate,
         timeframe,
-        max_decisions: parseInt(maxDecisions),
+        initial_capital: parseFloat(initialCapital),
+        engine_type: engineType,
+        strategy: engineType === 'vectorbt' ? strategy : undefined,
+        max_decisions: engineType === 'llm' ? parseInt(maxDecisions) : undefined,
       });
-      setResult(data);
-    } catch (err) {
-      setError('Failed to run backtest. Please try again.');
+      setResult(response.result);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to run backtest. Please try again.');
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
-
-  const formatPercent = (value: number) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
-  };
+  // Calculate estimated cost/time
+  const estimatedCost = engineType === 'llm' ? parseInt(maxDecisions) * 0.02 : 0;
+  const estimatedTime = engineType === 'llm' 
+    ? `${(parseInt(maxDecisions) * 15 / 60).toFixed(1)} min` 
+    : '<1 sec';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Backtest</h1>
-        <p className="text-gray-400">Test your trading strategy on historical data</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Backtesting</h1>
+        <p className="text-gray-400">Test trading strategies on historical market data</p>
       </div>
 
       {/* Backtest Form */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
         <form onSubmit={handleRunBacktest} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Engine Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Backtest Engine
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setEngineType('vectorbt')}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  engineType === 'vectorbt'
+                    ? 'border-blue-500 bg-blue-900/20'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-white">VectorBT Engine</h3>
+                  <span className="px-2 py-1 bg-green-900 text-green-200 text-xs rounded">
+                    Fast & Free
+                  </span>
+                </div>
+                <p className="text-sm text-gray-400 mb-2">
+                  Vectorized backtesting with professional metrics
+                </p>
+                <div className="text-xs text-gray-500">
+                  <span>• Instant results (~100ms)</span><br />
+                  <span>• $0.00 cost</span><br />
+                  <span>• Full date range support</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEngineType('llm')}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  engineType === 'llm'
+                    ? 'border-purple-500 bg-purple-900/20'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-white">LLM Engine</h3>
+                  <span className="px-2 py-1 bg-yellow-900 text-yellow-200 text-xs rounded">
+                    Slow & Costly
+                  </span>
+                </div>
+                <p className="text-sm text-gray-400 mb-2">
+                  6-agent pipeline with detailed reasoning
+                </p>
+                <div className="text-xs text-gray-500">
+                  <span>• ~15s per decision</span><br />
+                  <span>• ~$0.02 per decision</span><br />
+                  <span>• Limited decision count</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Strategy Selection (VectorBT only) */}
+          {engineType === 'vectorbt' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Trading Strategy
+              </label>
+              <div className="space-y-2">
+                {strategies.map((strat) => (
+                  <label
+                    key={strat.value}
+                    className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${
+                      strategy === strat.value
+                        ? 'border-blue-500 bg-blue-900/20'
+                        : 'border-gray-600 hover:border-gray-500'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="strategy"
+                      value={strat.value}
+                      checked={strategy === strat.value}
+                      onChange={(e) => setStrategy(e.target.value)}
+                      className="mt-1 mr-3"
+                    />
+                    <div>
+                      <div className="font-medium text-white">{strat.label}</div>
+                      <div className="text-sm text-gray-400">{strat.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Symbol */}
             <div>
               <label htmlFor="symbol" className="block text-sm font-medium text-gray-300 mb-2">
@@ -82,9 +202,7 @@ export default function Backtest() {
                 required
               >
                 {symbols.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
@@ -102,13 +220,30 @@ export default function Backtest() {
                 required
               >
                 {timeframes.map((tf) => (
-                  <option key={tf} value={tf}>
-                    {tf}
-                  </option>
+                  <option key={tf} value={tf}>{tf}</option>
                 ))}
               </select>
             </div>
 
+            {/* Initial Capital */}
+            <div>
+              <label htmlFor="capital" className="block text-sm font-medium text-gray-300 mb-2">
+                Initial Capital ($)
+              </label>
+              <input
+                type="number"
+                id="capital"
+                value={initialCapital}
+                onChange={(e) => setInitialCapital(e.target.value)}
+                min="1000"
+                step="1000"
+                className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Start Date */}
             <div>
               <label htmlFor="start-date" className="block text-sm font-medium text-gray-300 mb-2">
@@ -138,22 +273,44 @@ export default function Backtest() {
                 required
               />
             </div>
+          </div>
 
-            {/* Max Decisions */}
+          {/* Max Decisions (LLM only) */}
+          {engineType === 'llm' && (
             <div>
               <label htmlFor="max-decisions" className="block text-sm font-medium text-gray-300 mb-2">
-                Max Decisions (to control LLM cost)
+                Max Decisions (Cost Control)
               </label>
               <input
                 type="number"
                 id="max-decisions"
                 value={maxDecisions}
                 onChange={(e) => setMaxDecisions(e.target.value)}
-                min="1"
+                min="10"
                 max="200"
+                step="10"
                 className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Recommended: 50 decisions max (~$1.00 cost)
+              </p>
+            </div>
+          )}
+
+          {/* Estimated Cost/Time */}
+          <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4 flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-gray-300">
+                <span className="font-semibold">Estimated:</span> {estimatedTime} execution time, 
+                ${estimatedCost.toFixed(2)} cost
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {engineType === 'vectorbt' 
+                  ? 'VectorBT processes entire date range instantly with zero cost.'
+                  : 'LLM engine runs sequentially and costs add up. Use VectorBT for full backtests.'}
+              </p>
             </div>
           </div>
 
@@ -182,204 +339,16 @@ export default function Backtest() {
       {loading && (
         <div className="flex flex-col items-center justify-center py-12">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-4"></div>
-          <p className="text-gray-400 text-lg">Running backtest...</p>
-          <p className="text-gray-500 text-sm mt-2">This may take 1-3 minutes</p>
+          <p className="text-gray-400 text-lg">Running {engineType} backtest...</p>
+          <p className="text-gray-500 text-sm mt-2">
+            {engineType === 'llm' ? 'This may take several minutes' : 'Should complete in seconds'}
+          </p>
         </div>
       )}
 
       {/* Results */}
       {!loading && result && (
-        <div className="space-y-8">
-          {/* Metrics Grid */}
-          <div>
-            <h2 className="text-2xl font-bold text-white mb-4">Performance Metrics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Total Return */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-400 text-sm font-medium">Total Return</p>
-                  {result.metrics.total_return >= 0 ? (
-                    <TrendingUp className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <TrendingDown className="w-5 h-5 text-red-500" />
-                  )}
-                </div>
-                <p className={`text-2xl font-bold ${result.metrics.total_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {formatCurrency(result.metrics.total_return)}
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {formatPercent(result.metrics.total_return_pct)}
-                </p>
-              </div>
-
-              {/* Max Drawdown */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-400 text-sm font-medium">Max Drawdown</p>
-                  <TrendingDown className="w-5 h-5 text-red-500" />
-                </div>
-                <p className="text-2xl font-bold text-red-400">
-                  {formatCurrency(result.metrics.max_drawdown)}
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {formatPercent(result.metrics.max_drawdown_pct)}
-                </p>
-              </div>
-
-              {/* Number of Trades */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-400 text-sm font-medium">Total Trades</p>
-                  <DollarSign className="w-5 h-5 text-blue-500" />
-                </div>
-                <p className="text-2xl font-bold text-white">
-                  {result.metrics.num_trades}
-                </p>
-              </div>
-
-              {/* Win Rate */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-400 text-sm font-medium">Win Rate</p>
-                  <TrendingUp className="w-5 h-5 text-purple-500" />
-                </div>
-                <p className="text-2xl font-bold text-white">
-                  {(result.metrics.win_rate * 100).toFixed(1)}%
-                </p>
-              </div>
-
-              {/* Sharpe Ratio */}
-              {result.metrics.sharpe_ratio !== undefined && (
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-sm font-medium">Sharpe Ratio</p>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {result.metrics.sharpe_ratio.toFixed(2)}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Equity Curve Chart */}
-          <div>
-            <h2 className="text-2xl font-bold text-white mb-4">Equity Curve</h2>
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart
-                  data={result.equity_curve.map(point => ({
-                    timestamp: new Date(point.timestamp).getTime(),
-                    equity: point.equity,
-                  }))}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis
-                    dataKey="timestamp"
-                    type="number"
-                    domain={['dataMin', 'dataMax']}
-                    tickFormatter={(value) => format(new Date(value), 'MMM dd')}
-                    stroke="#9CA3AF"
-                  />
-                  <YAxis
-                    domain={['auto', 'auto']}
-                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                    stroke="#9CA3AF"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1F2937',
-                      border: '1px solid #374151',
-                      borderRadius: '0.5rem',
-                      color: '#F3F4F6',
-                    }}
-                    labelFormatter={(value) => format(new Date(value), 'MMM dd, yyyy HH:mm')}
-                    formatter={(value: number) => [formatCurrency(value), 'Equity']}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="equity"
-                    stroke={result.metrics.total_return >= 0 ? '#10B981' : '#EF4444'}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Trades Table */}
-          <div>
-            <h2 className="text-2xl font-bold text-white mb-4">Trade History</h2>
-            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-900">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Date & Time
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Symbol
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Side
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Price
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Value
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        PnL
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-700">
-                    {result.trades.map((trade) => (
-                      <tr key={trade.id} className="hover:bg-gray-700/50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {format(new Date(trade.timestamp), 'MMM dd, yyyy HH:mm')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                          {trade.symbol}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            trade.side === 'BUY'
-                              ? 'bg-green-900/30 text-green-400'
-                              : 'bg-red-900/30 text-red-400'
-                          }`}>
-                            {trade.side}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-300">
-                          {trade.quantity.toFixed(6)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-300">
-                          {formatCurrency(trade.price)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-300">
-                          {formatCurrency(trade.quantity * trade.price)}
-                        </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
-                          trade.pnl && trade.pnl >= 0 ? 'text-green-400' : trade.pnl ? 'text-red-400' : 'text-gray-400'
-                        }`}>
-                          {trade.pnl ? formatCurrency(trade.pnl) : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BacktestResults result={result} />
       )}
     </div>
   );

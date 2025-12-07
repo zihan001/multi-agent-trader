@@ -216,13 +216,16 @@ export interface TradesResponse {
   total: number;
 }
 
-// Backtest types
+// Backtest types (Phase 6 - Unified)
 export interface BacktestRequest {
   symbol: string;
   start_date: string;
   end_date: string;
-  timeframe: string;
-  max_decisions?: number;
+  timeframe?: string;
+  initial_capital?: number;
+  engine_type?: string;  // "llm" | "vectorbt"
+  strategy?: string;     // For VectorBT: "rsi_macd" | "ema_crossover" | "bb_volume"
+  max_decisions?: number; // For LLM: limit decision count to control costs
 }
 
 export interface BacktestMetrics {
@@ -230,23 +233,47 @@ export interface BacktestMetrics {
   total_return_pct: number;
   max_drawdown: number;
   max_drawdown_pct: number;
-  num_trades: number;
+  sharpe_ratio?: number | null;
+  sortino_ratio?: number | null;
   win_rate: number;
-  sharpe_ratio?: number;
+  num_trades: number;
+  avg_trade_return: number;
+  best_trade: number;
+  worst_trade: number;
+  profit_factor?: number | null;
 }
 
 export interface EquityPoint {
   timestamp: string;
   equity: number;
+  cash: number;
+  positions_value: number;
 }
 
-export interface BacktestResponse {
+export interface BacktestTrade {
+  timestamp: string;
+  side: string;
+  quantity: number;
+  price: number;
+  pnl: number;
+}
+
+export interface BacktestResult {
   run_id: string;
   symbol: string;
   start_date: string;
   end_date: string;
   timeframe: string;
+  initial_capital: number;
+  final_equity: number;
   metrics: BacktestMetrics;
   equity_curve: EquityPoint[];
-  trades: Trade[];
+  trades: BacktestTrade[];
+  engine_type: string;
+  strategy_name?: string;
+  execution_time_ms: number;
+}
+
+export interface BacktestResponse {
+  result: BacktestResult;
 }

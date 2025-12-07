@@ -69,16 +69,20 @@ class AgentLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     agent_name = Column(String(50), nullable=False, index=True)
-    model = Column(String(100), nullable=False)  # Model name (can be long for OpenRouter)
+    model = Column(String(100), nullable=True)  # Model name (null for rule-based)
     input_data = Column(Text, nullable=True)  # Full input (JSON string)
     output_data = Column(Text, nullable=True)  # Full output or error message
-    tokens_used = Column(Integer, default=0)  # Total tokens
+    tokens_used = Column(Integer, default=0)  # Total tokens (0 for rule-based)
     input_tokens = Column(Integer, nullable=True)  # Input tokens
     output_tokens = Column(Integer, nullable=True)  # Output tokens
-    cost = Column(Float, default=0.0)  # Cost in USD
+    cost = Column(Float, default=0.0)  # Cost in USD (0 for rule-based)
     latency_seconds = Column(Float, nullable=True)  # API call latency
     run_id = Column(String(50), nullable=True, index=True)  # Optional grouping
     symbol = Column(String(20), nullable=True, index=True)  # Optional symbol context
+    
+    # Phase 6: Engine type tracking
+    decision_type = Column(String(20), nullable=True, index=True)  # "llm", "rule", "hybrid", etc.
+    strategy_name = Column(String(50), nullable=True)  # Strategy name for rule-based engines
 
 
 class BacktestRun(Base):

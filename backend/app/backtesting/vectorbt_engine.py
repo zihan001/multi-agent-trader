@@ -160,30 +160,36 @@ class VectorBTEngine(BaseBacktestEngine):
             freq=timeframe
         )
         
-        # Extract trades
+        # Extract trades - create entries and exits as separate trade records
         trades = []
         try:
             trade_records = portfolio.trades.records_readable
             if len(trade_records) > 0:
                 for i in range(len(trade_records)):
-                    trade = trade_records.iloc[i]
-                    # Handle different column name formats
-                    entry_idx = trade.get("Entry Index", trade.get("Entry Idx", None))
-                    exit_idx = trade.get("Exit Index", trade.get("Exit Idx", None))
+                    trade_row = trade_records.iloc[i]
                     
-                    # Get timestamp from index
-                    if entry_idx is not None and entry_idx < len(df):
-                        timestamp = df.index[int(entry_idx)]
-                    else:
-                        timestamp = df.index[0]
+                    # Get timestamps
+                    entry_ts = trade_row.get("Entry Timestamp")
+                    exit_ts = trade_row.get("Exit Timestamp")
                     
+                    # Entry trade (BUY)
                     trades.append({
-                        "timestamp": timestamp,
-                        "side": "BUY" if trade.get("Size", 0) > 0 else "SELL",
-                        "quantity": abs(trade.get("Size", 0)),
-                        "price": trade.get("Avg Entry Price", trade.get("Entry Price", df["close"].iloc[int(entry_idx)] if entry_idx is not None else 0)),
-                        "pnl": trade.get("PnL", trade.get("Return", 0))
+                        "timestamp": entry_ts,
+                        "side": "BUY",
+                        "quantity": abs(trade_row.get("Size", 0)),
+                        "price": trade_row.get("Avg Entry Price", 0),
+                        "pnl": None  # No PnL on entry
                     })
+                    
+                    # Exit trade (SELL) - only if trade is closed
+                    if trade_row.get("Status") == "Closed" and exit_ts is not None:
+                        trades.append({
+                            "timestamp": exit_ts,
+                            "side": "SELL",
+                            "quantity": abs(trade_row.get("Size", 0)),
+                            "price": trade_row.get("Avg Exit Price", 0),
+                            "pnl": trade_row.get("PnL", 0)
+                        })
         except Exception as e:
             # If trade extraction fails, continue with empty trades list
             print(f"Warning: Could not extract trades: {e}")
@@ -256,56 +262,109 @@ class VectorBTEngine(BaseBacktestEngine):
         """
         Generate RSI + MACD entry/exit signals.
         
-        Uses MACD crossover as primary signal with RSI as filter:
-        - BUY on bullish MACD crossover when RSI < 50 (not overbought)
-        - SELL on bearish MACD crossover when RSI > 50 (not oversold)
-        """
-        # Detect MACD crossovers
-        macd_above_signal = df["macd"] > df["macd_signal"]
-        macd_above_signal_prev = macd_above_signal.shift(1).fillna(False)
+        Uses MACD HISTOGRAM crossover as primary signal with RSI as filter:
+        - BUY on bullish MACD histogram crossover (negative->positive) when RSI < 50
+        - SELL on bearish MACD histogram crossover (positive->negative) when RSI > 50
         
-        # Bullish crossover: MACD crosses above signal
-        macd_bullish_cross = (~macd_above_signal_prev) & macd_above_signal
-        # Bearish crossover: MACD crosses below signal  
-        macd_bearish_cross = macd_above_signal_prev & (~macd_above_signal)
+        Tracks position state to prevent duplicate entries.
+        """
+        # Calculate previous MACD histogram for crossover detection
+        macd_hist_prev = df["macd_hist"].shift(1)
+        
+        # Detect MACD histogram crossovers
+        # Bullish crossover: histogram crosses from negative to positive
+        macd_bullish_cross = (df["macd_hist"] > 0) & (macd_hist_prev <= 0)
+        # Bearish crossover: histogram crosses from positive to negative
+        macd_bearish_cross = (df["macd_hist"] < 0) & (macd_hist_prev >= 0)
         
         # Apply RSI filter (handle NaN in RSI)
         rsi_valid = df["rsi"].notna()
-        entries = macd_bullish_cross & (df["rsi"] < 50) & rsi_valid
-        exits = macd_bearish_cross & (df["rsi"] > 50) & rsi_valid
+        raw_entries = macd_bullish_cross & (df["rsi"] < 50) & rsi_valid
+        raw_exits = macd_bearish_cross & (df["rsi"] > 50) & rsi_valid
+        
+        # Track position state: only allow entry when not in position
+        entries, exits = self._enforce_position_state(raw_entries, raw_exits)
         
         return entries, exits
     
     def _ema_crossover_signals(self, df: pd.DataFrame) -> tuple:
-        """Generate EMA crossover entry/exit signals."""
+        """
+        Generate EMA crossover entry/exit signals.
+        
+        Tracks position state to prevent duplicate entries.
+        """
         fast_above_slow = df["ema_fast"] > df["ema_slow"]
         fast_above_slow_prev = fast_above_slow.shift(1).fillna(False)
         
-        entries = (
+        raw_entries = (
             (~fast_above_slow_prev) & fast_above_slow &
             (df["close"] > df["ema_trend"])
         )
-        exits = (
-            fast_above_slow_prev & (~fast_above_slow)
+        raw_exits = (
+            fast_above_slow_prev & (~fast_above_slow) &
+            (df["close"] < df["ema_trend"])  # Also check price below trend for exit
         )
+        
+        # Track position state: only allow entry when not in position
+        entries, exits = self._enforce_position_state(raw_entries, raw_exits)
+        
         return entries, exits
     
     def _bb_volume_signals(self, df: pd.DataFrame) -> tuple:
-        """Generate Bollinger Bands + Volume signals."""
+        """
+        Generate Bollinger Bands + Volume signals.
+        
+        Tracks position state to prevent duplicate entries.
+        """
         volume_ma = df["volume"].rolling(window=settings.bb_period).mean()
         volume_ratio = (df["volume"] / volume_ma).fillna(0)
         
         # Handle NaN in BB values
         bb_valid = df["bb_lower"].notna() & df["bb_upper"].notna()
         
-        entries = (
+        raw_entries = (
             (df["close"] <= df["bb_lower"]) &
             (volume_ratio >= settings.volume_surge_threshold) &
             bb_valid
         )
-        exits = (
+        raw_exits = (
             (df["close"] >= df["bb_upper"]) &
             (volume_ratio >= settings.volume_surge_threshold) &
             bb_valid
         )
+        
+        # Track position state: only allow entry when not in position
+        entries, exits = self._enforce_position_state(raw_entries, raw_exits)
+        
+        return entries, exits
+    
+    def _enforce_position_state(self, raw_entries: pd.Series, raw_exits: pd.Series) -> tuple:
+        """
+        Enforce position state tracking to prevent duplicate entries.
+        
+        Only allow entry signals when not in a position.
+        Only allow exit signals when in a position.
+        
+        Args:
+            raw_entries: Boolean series of raw entry signals
+            raw_exits: Boolean series of raw exit signals
+            
+        Returns:
+            Tuple of (entries, exits) with position state enforced
+        """
+        entries = pd.Series(False, index=raw_entries.index)
+        exits = pd.Series(False, index=raw_exits.index)
+        
+        in_position = False
+        
+        for i in range(len(raw_entries)):
+            if not in_position and raw_entries.iloc[i]:
+                # Not in position and entry signal -> ENTER
+                entries.iloc[i] = True
+                in_position = True
+            elif in_position and raw_exits.iloc[i]:
+                # In position and exit signal -> EXIT
+                exits.iloc[i] = True
+                in_position = False
+        
         return entries, exits

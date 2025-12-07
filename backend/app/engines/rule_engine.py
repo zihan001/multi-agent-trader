@@ -47,6 +47,24 @@ class RuleEngine(BaseDecisionEngine):
         if self.strategy not in valid_strategies:
             raise ValueError(f"Invalid strategy '{self.strategy}'. Must be one of: {valid_strategies}")
     
+    def _has_position(self, symbol: str, portfolio_data: Dict[str, Any]) -> tuple[bool, float]:
+        """
+        Check if we have an existing position for this symbol.
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            portfolio_data: Portfolio state with positions
+            
+        Returns:
+            Tuple of (has_position, quantity)
+        """
+        positions = portfolio_data.get("positions", [])
+        for position in positions:
+            if position.get("symbol") == symbol:
+                quantity = position.get("quantity", 0)
+                return quantity > 0, quantity
+        return False, 0.0
+    
     def analyze(
         self,
         symbol: str,
@@ -71,6 +89,9 @@ class RuleEngine(BaseDecisionEngine):
         # Get indicators from market data
         indicators = market_data.get("indicators", {})
         current_price = market_data.get("current_price", 0)
+        
+        # Add symbol to portfolio_data for position checking
+        portfolio_data["symbol"] = symbol
         
         # Execute strategy
         if self.strategy == "rsi_macd":
@@ -141,11 +162,13 @@ class RuleEngine(BaseDecisionEngine):
         
         BUY when:
         - MACD crosses above MACD Signal (bullish crossover) AND
-        - RSI < 50 (not overbought)
+        - RSI < 50 (not overbought) AND
+        - No existing position
         
         SELL when:
         - MACD crosses below MACD Signal (bearish crossover) AND
-        - RSI > 50 (not oversold)
+        - RSI > 50 (not oversold) AND
+        - Have existing position
         
         This uses MACD crossover as the primary signal with RSI as a filter,
         which is more practical than requiring extreme RSI levels.
@@ -158,6 +181,10 @@ class RuleEngine(BaseDecisionEngine):
         macd_signal = indicators.get("macd_signal", 0)
         macd_hist = indicators.get("macd_histogram", 0)
         macd_hist_prev = indicators.get("macd_histogram_prev", 0)
+        
+        # Get symbol from portfolio data (should be passed in context)
+        symbol = portfolio_data.get("symbol", "UNKNOWN")
+        has_position, position_qty = self._has_position(symbol, portfolio_data)
         
         # Collect signals
         signals = {
@@ -178,6 +205,12 @@ class RuleEngine(BaseDecisionEngine):
                 value=macd_hist,
                 threshold=0,
                 status="positive" if macd_hist > 0 else "negative"
+            ),
+            "position_state": SignalData(
+                name="Position State",
+                value=position_qty,
+                threshold=0,
+                status="holding" if has_position else "no_position"
             )
         }
         
@@ -186,28 +219,41 @@ class RuleEngine(BaseDecisionEngine):
         reasoning = ""
         confidence = 0.5
         
-        # Bullish MACD crossover: current histogram positive, previous negative (or crossed)
-        macd_bullish = macd > macd_signal and macd_hist > 0
-        # Bearish MACD crossover: current histogram negative, previous positive (or crossed)
-        macd_bearish = macd < macd_signal and macd_hist < 0
+        # Detect MACD crossover: histogram changes sign
+        macd_bullish_crossover = macd_hist > 0 and macd_hist_prev <= 0  # Crossed from negative to positive
+        macd_bearish_crossover = macd_hist < 0 and macd_hist_prev >= 0  # Crossed from positive to negative
         
-        if macd_bullish and rsi < 50:
+        # BUY: Bullish crossover + RSI filter + no position
+        if macd_bullish_crossover and rsi < 50 and not has_position:
             action = "BUY"
-            reasoning = f"MACD bullish (histogram: {macd_hist:.2f}) + RSI not overbought ({rsi:.1f})"
+            reasoning = f"MACD bullish crossover (histogram: {macd_hist_prev:.3f} → {macd_hist:.3f}) + RSI not overbought ({rsi:.1f})"
             # Higher confidence when RSI is lower and MACD histogram is stronger
             confidence = 0.65 + (50 - rsi) / 100 + min(abs(macd_hist), 5) / 20
             confidence = min(confidence, 0.90)  # Cap at 90%
-        elif macd_bearish and rsi > 50:
+            
+            # Boost confidence for extreme RSI
+            if rsi < settings.rsi_oversold:
+                confidence = min(confidence + 0.1, 0.95)
+        
+        # SELL: Bearish crossover + RSI filter + have position
+        elif macd_bearish_crossover and rsi > 50 and has_position:
             action = "SELL"
-            reasoning = f"MACD bearish (histogram: {macd_hist:.2f}) + RSI not oversold ({rsi:.1f})"
+            reasoning = f"MACD bearish crossover (histogram: {macd_hist_prev:.3f} → {macd_hist:.3f}) + RSI not oversold ({rsi:.1f})"
             confidence = 0.65 + (rsi - 50) / 100 + min(abs(macd_hist), 5) / 20
             confidence = min(confidence, 0.90)
+            
+            # Boost confidence for extreme RSI
+            if rsi > settings.rsi_overbought:
+                confidence = min(confidence + 0.1, 0.95)
+        
+        # HOLD cases
         else:
-            reasoning = f"No clear signal (RSI: {rsi:.1f}, MACD {'bullish' if macd > macd_signal else 'bearish'})"        # For very strong signals (extreme RSI), increase confidence
-        if action == "BUY" and rsi < settings.rsi_oversold:
-            confidence = min(confidence + 0.1, 0.95)
-        elif action == "SELL" and rsi > settings.rsi_overbought:
-            confidence = min(confidence + 0.1, 0.95)
+            if has_position:
+                reasoning = f"Holding position (RSI: {rsi:.1f}, MACD hist: {macd_hist:.3f}, no sell signal)"
+            elif macd_hist > 0 and rsi < 50:
+                reasoning = f"Bullish conditions but no crossover (histogram: {macd_hist_prev:.3f} → {macd_hist:.3f})"
+            else:
+                reasoning = f"No clear signal (RSI: {rsi:.1f}, MACD {'bullish' if macd > macd_signal else 'bearish'}, hist: {macd_hist:.3f})"
         
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
@@ -232,11 +278,13 @@ class RuleEngine(BaseDecisionEngine):
         
         BUY when:
         - Fast EMA crosses above Slow EMA (golden cross) AND
-        - Price is above Trend EMA (confirming uptrend)
+        - Price is above Trend EMA (confirming uptrend) AND
+        - No existing position
         
         SELL when:
         - Fast EMA crosses below Slow EMA (death cross) AND
-        - Price is below Trend EMA (confirming downtrend)
+        - Price is below Trend EMA (confirming downtrend) AND
+        - Have existing position
         
         Returns:
             Tuple of (TradingDecision, signals dict)
@@ -244,6 +292,14 @@ class RuleEngine(BaseDecisionEngine):
         ema_fast = indicators.get(f"ema_{settings.ema_fast}", current_price)
         ema_slow = indicators.get(f"ema_{settings.ema_slow}", current_price)
         ema_trend = indicators.get(f"ema_{settings.ema_trend}", current_price)
+        
+        # Get previous values for crossover detection
+        ema_fast_prev = indicators.get(f"ema_{settings.ema_fast}_prev", ema_fast)
+        ema_slow_prev = indicators.get(f"ema_{settings.ema_slow}_prev", ema_slow)
+        
+        # Get symbol and position state
+        symbol = portfolio_data.get("symbol", "UNKNOWN")
+        has_position, position_qty = self._has_position(symbol, portfolio_data)
         
         # Collect signals
         signals = {
@@ -264,26 +320,48 @@ class RuleEngine(BaseDecisionEngine):
                 value=current_price,
                 threshold=ema_trend,
                 status="bullish" if current_price > ema_trend else "bearish"
+            ),
+            "position_state": SignalData(
+                name="Position State",
+                value=position_qty,
+                threshold=0,
+                status="holding" if has_position else "no_position"
             )
         }
         
-        # Determine action
+        # Determine action - detect crossover events
         action = "HOLD"
         reasoning = ""
         confidence = 0.5
         
-        if ema_fast > ema_slow and current_price > ema_trend:
+        # Detect crossovers
+        golden_cross = (ema_fast > ema_slow) and (ema_fast_prev <= ema_slow_prev)  # Just crossed above
+        death_cross = (ema_fast < ema_slow) and (ema_fast_prev >= ema_slow_prev)   # Just crossed below
+        
+        # BUY: Golden cross + price above trend + no position
+        if golden_cross and current_price > ema_trend and not has_position:
             action = "BUY"
             crossover_strength = (ema_fast - ema_slow) / ema_slow * 100
-            reasoning = f"Golden cross: EMA{settings.ema_fast} > EMA{settings.ema_slow} + price > trend EMA"
-            confidence = 0.7 + min(abs(crossover_strength), 5) / 10  # Higher confidence with stronger crossover
-        elif ema_fast < ema_slow and current_price < ema_trend:
+            reasoning = f"Golden cross: EMA{settings.ema_fast} crossed above EMA{settings.ema_slow} + price > trend EMA"
+            confidence = 0.7 + min(abs(crossover_strength), 5) / 10
+            confidence = min(confidence, 0.90)
+        
+        # SELL: Death cross + price below trend + have position
+        elif death_cross and current_price < ema_trend and has_position:
             action = "SELL"
             crossover_strength = (ema_slow - ema_fast) / ema_fast * 100
-            reasoning = f"Death cross: EMA{settings.ema_fast} < EMA{settings.ema_slow} + price < trend EMA"
+            reasoning = f"Death cross: EMA{settings.ema_fast} crossed below EMA{settings.ema_slow} + price < trend EMA"
             confidence = 0.7 + min(abs(crossover_strength), 5) / 10
+            confidence = min(confidence, 0.90)
+        
+        # HOLD cases
         else:
-            reasoning = f"No clear crossover signal (Fast EMA {'>' if ema_fast > ema_slow else '<'} Slow EMA)"
+            if has_position:
+                reasoning = f"Holding position (Fast EMA {'>' if ema_fast > ema_slow else '<'} Slow EMA, no exit signal)"
+            elif ema_fast > ema_slow and current_price > ema_trend:
+                reasoning = f"Bullish alignment but no crossover (Fast EMA already above Slow EMA)"
+            else:
+                reasoning = f"No clear crossover signal (Fast EMA {'>' if ema_fast > ema_slow else '<'} Slow EMA)"
         
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
@@ -308,11 +386,13 @@ class RuleEngine(BaseDecisionEngine):
         
         BUY when:
         - Price touches or breaks below lower Bollinger Band AND
-        - Volume is above average (volume surge)
+        - Volume is above average (volume surge) AND
+        - No existing position
         
         SELL when:
         - Price touches or breaks above upper Bollinger Band AND
-        - Volume is above average (volume surge)
+        - Volume is above average (volume surge) AND
+        - Have existing position
         
         Returns:
             Tuple of (TradingDecision, signals dict)
@@ -328,6 +408,10 @@ class RuleEngine(BaseDecisionEngine):
             avg_volume = 1
         
         volume_ratio = current_volume / avg_volume
+        
+        # Get symbol and position state
+        symbol = portfolio_data.get("symbol", "UNKNOWN")
+        has_position, position_qty = self._has_position(symbol, portfolio_data)
         
         # Collect signals
         signals = {
@@ -354,6 +438,12 @@ class RuleEngine(BaseDecisionEngine):
                 value=volume_ratio,
                 threshold=settings.volume_surge_threshold,
                 status="surge" if volume_ratio >= settings.volume_surge_threshold else "normal"
+            ),
+            "position_state": SignalData(
+                name="Position State",
+                value=position_qty,
+                threshold=0,
+                status="holding" if has_position else "no_position"
             )
         }
         
@@ -362,18 +452,30 @@ class RuleEngine(BaseDecisionEngine):
         reasoning = ""
         confidence = 0.5
         
-        if current_price <= bb_lower and volume_ratio >= settings.volume_surge_threshold:
+        # BUY: Price at/below lower BB + volume surge + no position
+        if current_price <= bb_lower and volume_ratio >= settings.volume_surge_threshold and not has_position:
             action = "BUY"
-            distance_pct = (bb_lower - current_price) / bb_lower * 100
+            distance_pct = abs((bb_lower - current_price) / bb_lower * 100)
             reasoning = f"Price at lower BB ({distance_pct:.1f}% below) + volume surge ({volume_ratio:.1f}x)"
-            confidence = 0.7 + min(distance_pct, 3) / 10  # Higher confidence with more oversold
-        elif current_price >= bb_upper and volume_ratio >= settings.volume_surge_threshold:
+            confidence = 0.7 + min(distance_pct, 3) / 10
+            confidence = min(confidence, 0.90)
+        
+        # SELL: Price at/above upper BB + volume surge + have position
+        elif current_price >= bb_upper and volume_ratio >= settings.volume_surge_threshold and has_position:
             action = "SELL"
             distance_pct = (current_price - bb_upper) / bb_upper * 100
             reasoning = f"Price at upper BB ({distance_pct:.1f}% above) + volume surge ({volume_ratio:.1f}x)"
             confidence = 0.7 + min(distance_pct, 3) / 10
+            confidence = min(confidence, 0.90)
+        
+        # HOLD cases
         else:
-            reasoning = f"No BB breakout signal (Price: {((current_price - bb_middle) / bb_middle * 100):.1f}% from middle)"
+            if has_position:
+                reasoning = f"Holding position (Price: {((current_price - bb_middle) / bb_middle * 100):.1f}% from middle BB, no sell signal)"
+            elif current_price <= bb_lower:
+                reasoning = f"Price at lower BB but no volume surge ({volume_ratio:.1f}x < {settings.volume_surge_threshold}x)"
+            else:
+                reasoning = f"No BB breakout signal (Price: {((current_price - bb_middle) / bb_middle * 100):.1f}% from middle)"
         
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
@@ -400,7 +502,7 @@ class RuleEngine(BaseDecisionEngine):
         Args:
             action: Trading action (BUY/SELL/HOLD)
             current_price: Current asset price
-            portfolio_data: Portfolio state
+            portfolio_data: Portfolio state (must include 'symbol' key)
             confidence: Strategy confidence (0-1)
             
         Returns:
@@ -409,12 +511,19 @@ class RuleEngine(BaseDecisionEngine):
         if action == "HOLD" or current_price == 0:
             return 0.0
         
-        # Get portfolio info
-        cash_balance = portfolio_data.get("cash_balance", 0)
-        total_equity = portfolio_data.get("total_equity", cash_balance)
-        positions = portfolio_data.get("positions", [])
+        # Get portfolio info from summary structure
+        summary = portfolio_data.get("summary", {})
+        cash_balance = summary.get("cash_balance", 0)
+        total_equity = summary.get("total_equity", cash_balance)
+        symbol = portfolio_data.get("symbol", "UNKNOWN")
         
         if action == "BUY":
+            # Check if we already have a position (should not happen if strategy is correct)
+            has_position, _ = self._has_position(symbol, portfolio_data)
+            if has_position:
+                # Safety check: don't buy if we already have a position
+                return 0.0
+            
             # Calculate position size based on confidence and max position size
             max_position_value = total_equity * settings.max_position_size_pct
             confidence_adjusted_value = max_position_value * confidence
@@ -428,21 +537,17 @@ class RuleEngine(BaseDecisionEngine):
             return 0.0
         
         elif action == "SELL":
-            # Find current position for this symbol
-            # Note: In actual implementation, symbol should be passed or available
-            # For now, we'll sell a percentage of the position based on confidence
+            # Find current position for this specific symbol
+            has_position, position_quantity = self._has_position(symbol, portfolio_data)
             
-            # Simplified: Assume selling entire position if confidence is high
-            # In production, this should be more sophisticated
-            if positions:
-                # Get largest position (simplified)
-                largest_position = max(positions, key=lambda x: x.get("quantity", 0))
-                position_quantity = largest_position.get("quantity", 0)
-                
-                # Sell proportion based on confidence
-                quantity = position_quantity * confidence
-                return round(quantity, 8)
-            return 0.0
+            if not has_position or position_quantity == 0:
+                # Safety check: can't sell if we don't have a position
+                return 0.0
+            
+            # Sell entire position (or proportion based on confidence if desired)
+            # For now, using confidence-based partial sells
+            quantity = position_quantity * confidence
+            return round(quantity, 8)
         
         return 0.0
     

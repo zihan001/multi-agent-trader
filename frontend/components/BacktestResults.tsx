@@ -23,15 +23,16 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
     positions: point.positions_value,
   }));
 
-  // Calculate additional metrics
+  // Calculate additional metrics (only for closed trades with PnL)
   const totalTrades = trades.length;
-  const winningTrades = trades.filter(t => t.pnl > 0).length;
-  const losingTrades = trades.filter(t => t.pnl < 0).length;
+  const closedTrades = trades.filter(t => t.pnl !== null && t.pnl !== undefined);
+  const winningTrades = closedTrades.filter(t => t.pnl! > 0).length;
+  const losingTrades = closedTrades.filter(t => t.pnl! < 0).length;
   const avgWinningTrade = winningTrades > 0 
-    ? trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0) / winningTrades 
+    ? closedTrades.filter(t => t.pnl! > 0).reduce((sum, t) => sum + t.pnl!, 0) / winningTrades 
     : 0;
   const avgLosingTrade = losingTrades > 0
-    ? trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0) / losingTrades
+    ? closedTrades.filter(t => t.pnl! < 0).reduce((sum, t) => sum + t.pnl!, 0) / losingTrades
     : 0;
 
   return (
@@ -226,9 +227,13 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
                       ${trade.price.toFixed(2)}
                     </td>
                     <td className={`px-4 py-3 whitespace-nowrap text-sm text-right font-semibold ${
+                      trade.pnl === null || trade.pnl === undefined ? 'text-gray-500' :
                       trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
-                      {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                      {trade.pnl === null || trade.pnl === undefined 
+                        ? '-' 
+                        : `${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}`
+                      }
                     </td>
                   </tr>
                 ))}

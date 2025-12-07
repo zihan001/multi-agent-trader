@@ -28,9 +28,13 @@ class TestRuleEngine:
                 "macd": 150.0,
                 "macd_signal": 100.0,  # Bullish crossover
                 "macd_histogram": 50.0,
+                "macd_histogram_prev": -10.0,  # Just crossed from negative to positive
                 "ema_9": 49500.0,
+                "ema_9_prev": 48900.0,  # Was below
                 "ema_21": 49000.0,
+                "ema_21_prev": 49100.0,  # Was above fast EMA
                 "ema_50": 48000.0,
+                "ema_50_prev": 48000.0,
                 "bb_upper": 51000.0,
                 "bb_lower": 49000.0,
                 "bb_middle": 50000.0,
@@ -41,12 +45,25 @@ class TestRuleEngine:
     
     @pytest.fixture
     def sample_portfolio_data(self):
-        """Sample portfolio data."""
+        """Sample portfolio data (no position for BUY tests)."""
         return {
-            "cash_balance": 10000.0,
-            "total_equity": 15000.0,
+            "summary": {
+                "cash_balance": 10000.0,
+                "total_equity": 10000.0,
+            },
+            "positions": []  # Empty positions for BUY signal tests
+        }
+    
+    @pytest.fixture
+    def sample_portfolio_with_position(self):
+        """Sample portfolio data with existing position (for SELL tests)."""
+        return {
+            "summary": {
+                "cash_balance": 5000.0,
+                "total_equity": 15000.0,
+            },
             "positions": [
-                {"symbol": "BTCUSDT", "quantity": 0.1, "avg_entry_price": 50000.0}
+                {"symbol": "BTCUSDT", "quantity": 0.2, "avg_entry_price": 50000.0}
             ]
         }
     
@@ -89,7 +106,7 @@ class TestRuleEngine:
         assert result.decision.action == "BUY"
         assert result.decision.quantity > 0
         assert result.decision.confidence > 0.7
-        assert "oversold" in result.decision.reasoning.lower()
+        assert "crossover" in result.decision.reasoning.lower()
         assert result.metadata.engine_type == "rule"
         assert result.metadata.strategy_name == "rsi_macd"
         assert result.metadata.cost == 0.0
@@ -98,25 +115,27 @@ class TestRuleEngine:
         assert "rsi" in result.signals
         assert "macd" in result.signals
     
-    def test_rsi_macd_sell_signal(self, db_session, sample_market_data, sample_portfolio_data):
+    def test_rsi_macd_sell_signal(self, db_session, sample_market_data, sample_portfolio_with_position):
         """Test RSI+MACD strategy generates SELL signal."""
-        # Modify indicators for SELL signal
+        # Modify indicators for SELL signal (bearish crossover)
         sample_market_data["indicators"]["rsi_14"] = 75.0  # Overbought
         sample_market_data["indicators"]["macd"] = 100.0
-        sample_market_data["indicators"]["macd_signal"] = 150.0  # Bearish crossover
+        sample_market_data["indicators"]["macd_signal"] = 150.0  # MACD below signal
+        sample_market_data["indicators"]["macd_histogram"] = -50.0  # Negative histogram
+        sample_market_data["indicators"]["macd_histogram_prev"] = 10.0  # Just crossed from positive to negative
         
         engine = RuleEngine(db_session, strategy="rsi_macd")
         
         result = engine.analyze(
             symbol="BTCUSDT",
             market_data=sample_market_data,
-            portfolio_data=sample_portfolio_data,
+            portfolio_data=sample_portfolio_with_position,
             run_id="test_run_2"
         )
         
         assert result.decision.action == "SELL"
         assert result.decision.quantity > 0
-        assert "overbought" in result.decision.reasoning.lower()
+        assert "crossover" in result.decision.reasoning.lower()
     
     def test_rsi_macd_hold_signal(self, db_session, sample_market_data, sample_portfolio_data):
         """Test RSI+MACD strategy generates HOLD signal."""
@@ -139,11 +158,15 @@ class TestRuleEngine:
     
     def test_ema_crossover_buy_signal(self, db_session, sample_market_data, sample_portfolio_data):
         """Test EMA Crossover strategy generates BUY signal."""
-        # Set up golden cross: fast > slow, price > trend
+        # Set up golden cross: fast EMA just crossed above slow EMA  
+        # Note: settings use EMA_FAST=12, EMA_SLOW=26, EMA_TREND=50
         sample_market_data["current_price"] = 50000.0
-        sample_market_data["indicators"]["ema_9"] = 49800.0
-        sample_market_data["indicators"]["ema_21"] = 49500.0
-        sample_market_data["indicators"]["ema_50"] = 48000.0
+        sample_market_data["indicators"]["ema_12"] = 49600.0  # Fast EMA now above slow
+        sample_market_data["indicators"]["ema_12_prev"] = 49400.0  # Was below slow
+        sample_market_data["indicators"]["ema_26"] = 49500.0  # Slow EMA
+        sample_market_data["indicators"]["ema_26_prev"] = 49600.0  # Was higher than fast
+        sample_market_data["indicators"]["ema_50"] = 48000.0  # Trend EMA below price
+        sample_market_data["indicators"]["ema_50_prev"] = 48000.0
         
         engine = RuleEngine(db_session, strategy="ema_crossover")
         
@@ -155,29 +178,33 @@ class TestRuleEngine:
         )
         
         assert result.decision.action == "BUY"
-        assert "Golden cross" in result.decision.reasoning or "cross" in result.decision.reasoning.lower()
+        assert "cross" in result.decision.reasoning.lower()
         assert result.signals is not None
         assert "ema_fast" in result.signals
     
-    def test_ema_crossover_sell_signal(self, db_session, sample_market_data, sample_portfolio_data):
+    def test_ema_crossover_sell_signal(self, db_session, sample_market_data, sample_portfolio_with_position):
         """Test EMA Crossover strategy generates SELL signal."""
-        # Set up death cross: fast < slow, price < trend
-        sample_market_data["current_price"] = 48000.0
-        sample_market_data["indicators"]["ema_9"] = 48500.0
-        sample_market_data["indicators"]["ema_21"] = 49000.0
-        sample_market_data["indicators"]["ema_50"] = 50000.0
+        # Set up death cross: fast EMA just crossed below slow EMA
+        # Note: settings use EMA_FAST=12, EMA_SLOW=26, EMA_TREND=50
+        sample_market_data["current_price"] = 48000.0  # Price below trend
+        sample_market_data["indicators"]["ema_12"] = 48900.0  # Fast EMA now below slow
+        sample_market_data["indicators"]["ema_12_prev"] = 49100.0  # Was above slow
+        sample_market_data["indicators"]["ema_26"] = 49000.0  # Slow EMA
+        sample_market_data["indicators"]["ema_26_prev"] = 48900.0  # Was lower than fast
+        sample_market_data["indicators"]["ema_50"] = 50000.0  # Trend EMA above price
+        sample_market_data["indicators"]["ema_50_prev"] = 50000.0
         
         engine = RuleEngine(db_session, strategy="ema_crossover")
         
         result = engine.analyze(
             symbol="BTCUSDT",
             market_data=sample_market_data,
-            portfolio_data=sample_portfolio_data,
+            portfolio_data=sample_portfolio_with_position,
             run_id="test_run_5"
         )
         
         assert result.decision.action == "SELL"
-        assert "Death cross" in result.decision.reasoning or "cross" in result.decision.reasoning.lower()
+        assert "cross" in result.decision.reasoning.lower()
     
     def test_bb_volume_buy_signal(self, db_session, sample_market_data, sample_portfolio_data):
         """Test BB+Volume strategy generates BUY signal."""
@@ -204,7 +231,7 @@ class TestRuleEngine:
         assert "bb_position" in result.signals
         assert "volume_ratio" in result.signals
     
-    def test_bb_volume_sell_signal(self, db_session, sample_market_data, sample_portfolio_data):
+    def test_bb_volume_sell_signal(self, db_session, sample_market_data, sample_portfolio_with_position):
         """Test BB+Volume strategy generates SELL signal."""
         # Price at upper band with volume surge
         sample_market_data["current_price"] = 51000.0
@@ -219,7 +246,7 @@ class TestRuleEngine:
         result = engine.analyze(
             symbol="BTCUSDT",
             market_data=sample_market_data,
-            portfolio_data=sample_portfolio_data,
+            portfolio_data=sample_portfolio_with_position,
             run_id="test_run_7"
         )
         
@@ -281,7 +308,7 @@ class TestRuleEngine:
         
         if result.decision.action == "BUY":
             # Calculate max allowed position value
-            max_position_value = sample_portfolio_data["total_equity"] * 0.10  # 10% max
+            max_position_value = sample_portfolio_data["summary"]["total_equity"] * 0.10  # 10% max
             actual_position_value = result.decision.quantity * sample_market_data["current_price"]
             
             # Should not exceed max position size

@@ -54,13 +54,13 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
             <p className="text-sm text-gray-600">Confidence</p>
             <p className="text-lg font-semibold">{(decision.confidence * 100).toFixed(1)}%</p>
           </div>
-          {decision.quantity && (
+          {decision.quantity != null && decision.quantity > 0 && (
             <div>
               <p className="text-sm text-gray-600">Quantity</p>
               <p className="text-lg font-semibold">{decision.quantity.toFixed(4)}</p>
             </div>
           )}
-          {decision.price && (
+          {decision.price != null && (
             <div>
               <p className="text-sm text-gray-600">Price</p>
               <p className="text-lg font-semibold">${decision.price.toFixed(2)}</p>
@@ -90,10 +90,10 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
           <div>
             <p className="text-sm text-gray-600">Cost</p>
             <p className="text-lg font-semibold">
-              ${metadata.total_cost.toFixed(4)}
+              ${(metadata.total_cost || 0).toFixed(4)}
             </p>
           </div>
-          {metadata.total_tokens && (
+          {metadata.total_tokens != null && metadata.total_tokens > 0 && (
             <div>
               <p className="text-sm text-gray-600">Tokens</p>
               <p className="text-lg font-semibold">{metadata.total_tokens.toLocaleString()}</p>
@@ -101,7 +101,7 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
           )}
           <div>
             <p className="text-sm text-gray-600">Execution Time</p>
-            <p className="text-lg font-semibold">{metadata.execution_time_ms.toFixed(0)}ms</p>
+            <p className="text-lg font-semibold">{(metadata.execution_time_ms || 0).toFixed(0)}ms</p>
           </div>
         </div>
       </div>
@@ -307,21 +307,21 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
             {Object.entries(signals).map(([key, signal]) => (
               <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{signal.indicator}</p>
+                  <p className="text-sm font-medium">{signal.name}</p>
                   <p className="text-xs text-gray-600">
-                    Value: {signal.value.toFixed(2)}
-                    {signal.threshold !== undefined && ` | Threshold: ${signal.threshold.toFixed(2)}`}
+                    Value: {signal.value?.toFixed(2) || 'N/A'}
+                    {signal.threshold !== undefined && signal.threshold !== null && ` | Threshold: ${signal.threshold.toFixed(2)}`}
                   </p>
                 </div>
                 <div>
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                    signal.signal === 'BUY' 
+                    signal.status === 'bullish' 
                       ? 'bg-green-100 text-green-800' 
-                      : signal.signal === 'SELL' 
+                      : signal.status === 'bearish' 
                       ? 'bg-red-100 text-red-800' 
                       : 'bg-gray-100 text-gray-800'
                   }`}>
-                    {signal.signal}
+                    {signal.status?.toUpperCase() || 'NEUTRAL'}
                   </span>
                 </div>
               </div>

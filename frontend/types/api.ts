@@ -87,10 +87,10 @@ export interface FinalDecision {
 
 // Unified Decision Types (Phase 6)
 export interface SignalData {
-  indicator: string;
+  name: string;
   value: number;
   threshold?: number;
-  signal: string;
+  status: string;
 }
 
 export interface TradingDecision {

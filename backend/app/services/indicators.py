@@ -173,6 +173,11 @@ class IndicatorService:
         # Get latest values
         latest_idx = -1
         
+        # Calculate EMA series for current and previous values
+        ema_9_series = calculate_ema(df, 9)
+        ema_21_series = calculate_ema(df, 21)
+        ema_50_series = calculate_ema(df, 50)
+        
         result = {
             # Price data
             'current_price': float(df['close'].iloc[latest_idx]),
@@ -182,10 +187,13 @@ class IndicatorService:
             'volume': float(df['volume'].iloc[latest_idx]),
             'current_volume': float(df['volume'].iloc[latest_idx]),
             
-            # Moving averages
-            'ema_9': float(calculate_ema(df, 9).iloc[latest_idx]),
-            'ema_21': float(calculate_ema(df, 21).iloc[latest_idx]),
-            'ema_50': float(calculate_ema(df, 50).iloc[latest_idx]),
+            # Moving averages (current and previous for crossover detection)
+            'ema_9': float(ema_9_series.iloc[latest_idx]),
+            'ema_9_prev': float(ema_9_series.iloc[latest_idx - 1]) if len(df) > 1 else float(ema_9_series.iloc[latest_idx]),
+            'ema_21': float(ema_21_series.iloc[latest_idx]),
+            'ema_21_prev': float(ema_21_series.iloc[latest_idx - 1]) if len(df) > 1 else float(ema_21_series.iloc[latest_idx]),
+            'ema_50': float(ema_50_series.iloc[latest_idx]),
+            'ema_50_prev': float(ema_50_series.iloc[latest_idx - 1]) if len(df) > 1 else float(ema_50_series.iloc[latest_idx]),
             'sma_20': float(calculate_sma(df, 20).iloc[latest_idx]),
             'sma_50': float(calculate_sma(df, 50).iloc[latest_idx]),
             

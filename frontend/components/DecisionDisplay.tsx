@@ -48,7 +48,7 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <p className="text-sm text-gray-400">Symbol</p>
-            <p className="text-lg font-semibold text-white">{decision.symbol}</p>
+            <p className="text-lg font-semibold text-white">{result.symbol}</p>
           </div>
           <div>
             <p className="text-sm text-gray-400">Confidence</p>

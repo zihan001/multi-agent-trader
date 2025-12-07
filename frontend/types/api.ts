@@ -255,7 +255,7 @@ export interface BacktestTrade {
   side: string;
   quantity: number;
   price: number;
-  pnl: number;
+  pnl: number | null;  // null for entry trades, populated for exit trades
 }
 
 export interface BacktestResult {

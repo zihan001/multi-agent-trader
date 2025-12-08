@@ -70,28 +70,44 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
           )}
         </div>
 
-        {/* Reasoning */}
+        {/* Reasoning Summary */}
         <div>
-          <p className="text-sm text-gray-400 mb-2">Reasoning</p>
+          <p className="text-sm text-gray-400 mb-3 font-semibold">Agent Reasoning Summary</p>
           {typeof decision.reasoning === 'string' ? (
             decision.reasoning.includes(' | ') ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {decision.reasoning.split(' | ').map((part: string, idx: number) => {
                   const [label, ...rest] = part.split(': ');
                   const text = rest.join(': ');
+                  
+                  // Map agent names to icons
+                  const agentIcons: Record<string, string> = {
+                    'Technical': '📊',
+                    'Sentiment': '💬',
+                    'Tokenomics': '🪙',
+                    'Researcher': '🔍',
+                    'Trader': '💼',
+                    'Risk': '🛡️'
+                  };
+                  
                   return (
-                    <div key={idx} className="bg-gray-700 p-3 rounded">
-                      <span className="text-sm font-semibold text-white">{label}:</span>
-                      <p className="text-sm text-gray-300 mt-1">{text}</p>
+                    <div key={idx} className="bg-gradient-to-r from-gray-700 to-gray-800 p-4 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">{agentIcons[label] || '🤖'}</span>
+                        <div className="flex-1">
+                          <span className="text-sm font-bold text-blue-400">{label}</span>
+                          <p className="text-sm text-gray-200 mt-1 leading-relaxed">{text}</p>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-sm text-gray-300">{decision.reasoning}</p>
+              <p className="text-sm text-gray-300 bg-gray-700 p-3 rounded">{decision.reasoning}</p>
             )
           ) : (
-            <ul className="list-disc list-inside space-y-1">
+            <ul className="list-disc list-inside space-y-1 bg-gray-700 p-3 rounded">
               {decision.reasoning.map((reason: string, idx: number) => (
                 <li key={idx} className="text-sm text-gray-300">{reason}</li>
               ))}

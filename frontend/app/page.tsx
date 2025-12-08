@@ -433,7 +433,39 @@ export default function Dashboard() {
                         </div>
 
                         {rec.reasoning && (
-                          <p className="text-sm text-gray-300 mb-3">{rec.reasoning}</p>
+                          <div className="mb-3">
+                            {typeof rec.reasoning === 'string' && rec.reasoning.includes(' | ') ? (
+                              <div className="space-y-2">
+                                {rec.reasoning.split(' | ').map((part: string, idx: number) => {
+                                  const [label, ...rest] = part.split(': ');
+                                  const text = rest.join(': ');
+                                  
+                                  const agentIcons: Record<string, string> = {
+                                    'Technical': '📊',
+                                    'Sentiment': '💬',
+                                    'Tokenomics': '🪙',
+                                    'Researcher': '🔍',
+                                    'Trader': '💼',
+                                    'Risk': '🛡️'
+                                  };
+                                  
+                                  return (
+                                    <div key={idx} className="bg-gradient-to-r from-gray-700 to-gray-800 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-base">{agentIcons[label] || '🤖'}</span>
+                                        <div className="flex-1">
+                                          <span className="text-xs font-bold text-blue-400">{label}</span>
+                                          <p className="text-xs text-gray-200 mt-1 leading-relaxed">{text}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-300">{rec.reasoning}</p>
+                            )}
+                          </div>
                         )}
 
                         <div className="flex items-center gap-2 text-xs text-gray-400">

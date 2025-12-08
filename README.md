@@ -1,50 +1,48 @@
 # AI Multi-Agent Crypto Trading Simulator
 
-> A portfolio demonstration project showcasing a simulated crypto trading firm powered by multiple LLM agents.
+> A portfolio demonstration project showcasing an AI-powered crypto trading advisory system with real Binance testnet integration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
 
-This system simulates a crypto trading firm where specialized AI agents analyze market data, debate trading decisions, and execute simulated trades. The project demonstrates:
-- Multi-agent LLM orchestration (primary focus)
-- Real-time market data integration (Binance API)
-- Portfolio simulation and backtesting
-- Full-stack web application
-- AWS cloud deployment with dual-mode operation
+This system demonstrates a professional AI trading advisory platform where specialized AI agents analyze market data and provide trading recommendations. You review their analysis and execute trades manually on Binance testnet, showcasing a **human-in-the-loop** workflow.
 
-**Deployment Strategy:**
-- **Development/Local Demo**: LLM-based agents (showcase AI capabilities locally)
-- **AWS Production Deployment**: Rule-based mode ONLY (zero LLM costs for public access)
-- **Capability**: Full LLM system available locally, rule-based deployed to cloud
-- **Future**: Optional ML models to enhance rule-based strategies
+**Key Capabilities:**
+- 🤖 **AI Advisory System** - Multiple specialized LLM agents provide trading recommendations with confidence scores and reasoning
+- 📊 **Real Market Integration** - Live Binance market data and testnet trading execution
+- 🎯 **Human-in-the-Loop** - AI recommends, you decide, you execute (realistic production workflow)
+- 💰 **Portfolio Tracking** - Monitor AI recommendations, paper trading performance, and testnet account balances
+- ⚡ **Dual-Mode Operation** - LLM agents (showcase AI) or rule-based strategies (production deployment)
+- 🌐 **Full-Stack Application** - Modern React/Next.js frontend with FastAPI backend
 
-**⚠️ Note:** This is a **simulation only**. No real trading occurs.
+**⚠️ Note:** Uses Binance **testnet** with fake funds. No real money involved.
 
 ## Features
 
-### Phase 1-6: LLM-Based System (PRIMARY - For Portfolio Demonstration)
+### AI Advisory System
 - 🤖 **Six Specialized LLM Agents** - Technical, Sentiment, Tokenomics Analysts + Researcher, Trader, Risk Manager
-- 🧠 **Natural Language Reasoning** - Agents provide human-readable explanations for every decision
-- 📊 **Live Market Data** - Real-time OHLCV from Binance public API
-- 💰 **Portfolio Simulation** - Track positions, PnL, and equity over time
-- ⏮️ **LLM Agent Backtesting** - Test AI decision-making on historical data
-- 🌐 **Web Interface** - Interactive dashboard showing agent reasoning and decisions
-- ☁️ **AWS Deployment** - Production-ready cloud infrastructure
-- 💵 **Cost-Conscious** - Token budgets, tiered LLM models, and daily spending limits
+- 🧠 **Natural Language Reasoning** - Agents provide human-readable explanations with confidence scores
+- 💡 **Recommendation Engine** - AI suggests trades; you review and execute manually
+- 📊 **Audit Trail** - Track all recommendations with status (pending/executed/rejected)
 
-### Phase 6+: Production Deployment Optimization (Cost-Effective for Live Demos)
-- 🎯 **Rule-Based Trading Engine** - Deterministic decisions based on technical indicators (no LLM costs)
+### Market Data & Trading
+- 📈 **Live Market Data** - Real-time OHLCV candles from Binance public API
+- 📊 **Technical Indicators** - RSI, MACD, EMAs, Bollinger Bands via TA-Lib
+- 💰 **Binance Testnet Integration** - Execute real paper trading orders with fake funds
+- 🎯 **Order Management** - Market/limit orders with real testnet execution and fills
+
+### Portfolio & Analysis
+- 💰 **Testnet Account Tracking** - Real-time balances from Binance testnet API
+- 📊 **Recommendation History** - View all AI suggestions and your execution decisions
+- ⏮️ **Backtesting** - Test strategies on historical data (LLM or rule-based)
+- 📈 **Performance Metrics** - PnL, win rate, drawdown analysis
+
+### Deployment & Scalability
+- 🔄 **Dual-Mode Operation** - Switch between LLM agents (local) or rule-based strategies (production)
 - ⚡ **VectorBT Backtesting** - Vectorized backtesting for 100x speed improvement
-- 📈 **TA-Lib Integration** - 150+ professional technical indicators
-- 🔄 **Dual-Mode Operation** - Switch between LLM and rule modes via environment variable
-- 🔮 **Future: ML Enhancement** - Optional ML models to work alongside rule-based strategies
-
-### Phase 6.5+: Advanced LLM Features (When Budget Allows)
-- 🤝 **LangChain Integration** - Enhanced agent orchestration with tools, memory, and advanced reasoning
-- 🧠 **Agent Memory** - Context retention across decisions for improved learning
-- 📝 **Paper Trading** - Real-time trading simulation via Binance testnet (spot & futures)
-- 🔍 **ReAct Agents** - Iterative reasoning and tool usage for complex analysis
+- 💵 **Cost-Conscious** - Token budgets, tiered LLM models, daily spending limits
+- 🌐 **Modern Web Interface** - React/Next.js frontend with real-time updates
 
 ## Quick Start
 

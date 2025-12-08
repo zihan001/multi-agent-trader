@@ -10,9 +10,11 @@ from datetime import datetime
 from app.core.database import get_db
 from app.engines.factory import DecisionEngineFactory
 from app.models.decisions import AnalysisRequest, AnalysisResponse, DecisionResult
+from app.models.database import AgentRecommendation
 from app.services.binance import BinanceService, get_latest_candles
 from app.services.indicators import IndicatorService
 from app.services.portfolio import PortfolioManager
+from app.services.paper_trading import PaperTradingService
 from app.core.config import settings
 import pandas as pd
 
@@ -122,8 +124,8 @@ async def run_analysis(
             "token_data": {},  # Mock for now
         }
         
-        # Get current portfolio state
-        portfolio_manager = PortfolioManager(db)
+        # Get current portfolio state (always use simulation for portfolio tracking)
+        portfolio_manager = PortfolioManager(db, use_paper_trading=False)
         portfolio_data = portfolio_manager.get_portfolio_summary()
         
         # Create decision engine using factory pattern
@@ -140,39 +142,67 @@ async def run_analysis(
             run_id=run_id,
         )
         
-        # Execute approved trade if action is BUY or SELL
-        trade_executed = None
+        # Store recommendation in database (not auto-executed)
+        recommendation = None
         decision = result.decision
         
-        if decision.action in ["BUY", "SELL"]:
+        if decision.action in ["BUY", "SELL", "HOLD"]:
             try:
-                portfolio_manager.execute_trade(
+                # Extract reasoning from agent outputs
+                reasoning_parts = []
+                if result.technical_analysis:
+                    reasoning_parts.append(f"Technical: {result.technical_analysis.get('reasoning', '')}")
+                if result.sentiment_analysis:
+                    reasoning_parts.append(f"Sentiment: {result.sentiment_analysis.get('reasoning', '')}")
+                if result.risk_analysis:
+                    reasoning_parts.append(f"Risk: {result.risk_analysis.get('reasoning', '')}")
+                
+                reasoning = " | ".join(reasoning_parts) if reasoning_parts else decision.reasoning
+                
+                # Create recommendation record
+                rec = AgentRecommendation(
+                    run_id=run_id,
                     symbol=symbol,
-                    side=decision.action,
-                    quantity=decision.quantity,
+                    action=decision.action,
+                    quantity=decision.quantity if decision.action != "HOLD" else None,
                     price=current_price,
+                    confidence=decision.confidence,
+                    reasoning=reasoning,
+                    status="pending",
+                    decision_type=settings.trading_mode,  # "llm" or "rule"
+                    strategy_name=decision.strategy if hasattr(decision, 'strategy') else None,
                 )
-                print(f"[{run_id}] Executed trade: {decision.action} {decision.quantity} {symbol}")
-                trade_executed = {
-                    "symbol": symbol,
-                    "action": decision.action,
-                    "quantity": decision.quantity,
-                    "price": current_price,
+                db.add(rec)
+                db.commit()
+                db.refresh(rec)
+                
+                recommendation = {
+                    "id": rec.id,
+                    "symbol": rec.symbol,
+                    "action": rec.action,
+                    "quantity": rec.quantity,
+                    "price": rec.price,
+                    "confidence": rec.confidence,
+                    "reasoning": rec.reasoning,
+                    "status": rec.status,
+                    "created_at": rec.created_at.isoformat(),
                 }
-            except Exception as trade_error:
-                print(f"[{run_id}] Error executing trade: {trade_error}")
+                
+                print(f"[{run_id}] Stored recommendation: {decision.action} {decision.quantity} {symbol} (ID: {rec.id})")
+            except Exception as rec_error:
+                print(f"[{run_id}] Error storing recommendation: {rec_error}")
                 result.errors.append({
-                    "type": "trade_execution_error",
-                    "message": str(trade_error)
+                    "type": "recommendation_storage_error",
+                    "message": str(rec_error)
                 })
         
-        # Get updated portfolio
-        updated_portfolio = portfolio_manager.get_portfolio_summary()
+        # Get portfolio (unchanged by this analysis)
+        portfolio = portfolio_manager.get_portfolio_summary()
         
         return AnalysisResponse(
             result=result,
-            portfolio_updated=trade_executed is not None,
-            trade_executed=trade_executed,
+            portfolio_updated=False,  # No auto-execution
+            recommendation=recommendation,
         )
         
     except HTTPException:

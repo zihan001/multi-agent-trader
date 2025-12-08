@@ -157,6 +157,86 @@ function AnalysisContent() {
       {/* Unified Decision Display */}
       <DecisionDisplay result={analysis.result} />
 
+      {/* Agent Recommendation Card */}
+      {analysis.recommendation && (
+        <div className="mt-8 bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-2 border-blue-500/50 rounded-lg p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-xl font-semibold text-white mb-2">🤖 AI Recommendation</h3>
+              <p className="text-sm text-gray-400">
+                The agents recommend <span className="font-semibold text-white">{analysis.recommendation.action}</span>
+                {analysis.recommendation.action !== 'HOLD' && (
+                  <span> {analysis.recommendation.quantity} {symbol} at ${analysis.recommendation.price.toFixed(2)}</span>
+                )}
+              </p>
+            </div>
+            <div className={`px-3 py-1 rounded text-xs font-semibold ${
+              analysis.recommendation.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+              analysis.recommendation.status === 'executed' ? 'bg-green-500/20 text-green-400' :
+              analysis.recommendation.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+              'bg-gray-500/20 text-gray-400'
+            }`}>
+              {analysis.recommendation.status.toUpperCase()}
+            </div>
+          </div>
+          
+          {analysis.recommendation.confidence && (
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-400">Confidence</span>
+                <span className="text-white font-medium">{(analysis.recommendation.confidence * 100).toFixed(0)}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all"
+                  style={{ width: `${analysis.recommendation.confidence * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+          
+          {analysis.recommendation.reasoning && (
+            <div className="mb-4 p-4 bg-gray-800/50 rounded">
+              <p className="text-sm text-gray-300 leading-relaxed">{analysis.recommendation.reasoning}</p>
+            </div>
+          )}
+          
+          {analysis.recommendation?.status === 'pending' && analysis.recommendation?.action !== 'HOLD' && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => router.push(`/paper-trading?recommendation=${analysis.recommendation?.id}`)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded font-medium transition-colors"
+              >
+                Execute on Testnet
+              </button>
+              <button
+                onClick={async () => {
+                  if (confirm('Reject this recommendation?')) {
+                    try {
+                      await fetch(`http://localhost:8000/recommendations/${analysis.recommendation?.id}/reject`, {
+                        method: 'POST',
+                      });
+                      window.location.reload();
+                    } catch (err) {
+                      alert('Failed to reject recommendation');
+                    }
+                  }
+                }}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded font-medium transition-colors"
+              >
+                Reject
+              </button>
+            </div>
+          )}
+          
+          {analysis.recommendation?.status === 'executed' && analysis.recommendation?.executed_order_id && (
+            <div className="text-sm text-green-400">
+              ✓ Executed as order #{analysis.recommendation?.executed_order_id}. View on <a href="/paper-trading" className="underline">Paper Trading</a> page.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Portfolio Snapshot */}
       {analysis.portfolio_snapshot && (
       <div className="mt-8 bg-gray-800 rounded-lg p-6 border border-gray-700">

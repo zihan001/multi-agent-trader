@@ -23,16 +23,27 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     
-    # Binance API
+    # Binance API (Production - for market data only)
     binance_base_url: str = "https://api.binance.com"
     
-    # Trading Simulation
+    # Binance Testnet API (Paper Trading)
+    # Get your testnet API keys from: https://testnet.binance.vision/
+    binance_testnet_enabled: bool = False  # Set to True to use testnet
+    binance_testnet_base_url: str = "https://testnet.binance.vision"
+    binance_testnet_api_key: Optional[str] = None
+    binance_testnet_api_secret: Optional[str] = None
+    
+    # Trading Simulation (for local simulation when testnet disabled)
     initial_cash: float = 10000.0
     max_position_size_pct: float = 0.10
     max_total_exposure_pct: float = 0.80
     
     # Trading Mode Configuration (Phase 6)
     trading_mode: str = "llm"  # Options: "llm" or "rule"
+    
+    # Paper Trading Configuration
+    paper_trading_enabled: bool = True
+    paper_trading_mode: str = "testnet"  # Options: "testnet" (real Binance API) or "simulation" (local)
     
     # Rule-Based Strategy Configuration (for trading_mode="rule")
     rule_strategy: str = "rsi_macd"  # Options: "rsi_macd", "ema_crossover", "bb_volume"

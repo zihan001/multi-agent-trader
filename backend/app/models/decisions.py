@@ -76,6 +76,28 @@ class DecisionResult(BaseModel):
     status: str = Field(default="completed", description="completed, failed, partial")
     errors: List[Dict[str, str]] = Field(default_factory=list)
     
+    # Backwards compatibility properties for frontend
+    @property
+    def technical_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract technical analysis from agents."""
+        if self.agents and "technical" in self.agents:
+            return self.agents["technical"].analysis
+        return None
+    
+    @property
+    def sentiment_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract sentiment analysis from agents."""
+        if self.agents and "sentiment" in self.agents:
+            return self.agents["sentiment"].analysis
+        return None
+    
+    @property
+    def risk_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract risk analysis from agents."""
+        if self.agents and "risk" in self.agents:
+            return self.agents["risk"].analysis
+        return None
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -113,4 +135,7 @@ class AnalysisResponse(BaseModel):
     """Response from analysis endpoint."""
     result: DecisionResult
     portfolio_updated: bool = Field(default=False)
-    trade_executed: Optional[Dict[str, Any]] = None
+    recommendation: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Stored recommendation (not auto-executed)"
+    )

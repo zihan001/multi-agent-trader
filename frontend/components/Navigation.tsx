@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, TrendingUp, Briefcase, TestTube2 } from 'lucide-react';
+import { BarChart3, TrendingUp, Briefcase, TestTube2, Wallet } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: BarChart3 },
   { name: 'Analysis', href: '/analysis', icon: TrendingUp },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
+  { name: 'Paper Trading', href: '/paper-trading', icon: Wallet },
   { name: 'Backtest', href: '/backtest', icon: TestTube2 },
 ];
 

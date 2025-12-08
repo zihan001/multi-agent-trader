@@ -2,7 +2,7 @@
 
 ## System Overview
 
-This is a portfolio demonstration project that simulates a crypto trading firm powered by multiple AI agents. The system fetches real market data from Binance, analyzes it through specialized LLM agents, and executes simulated trades. **All components are fully implemented and operational.**
+This is a portfolio demonstration project showcasing an AI-powered trading advisory platform. The system integrates real Binance market data and testnet trading, where specialized AI agents analyze markets and provide recommendations that you review and execute manually. This demonstrates a realistic **human-in-the-loop** production workflow. **All components are fully implemented and operational.**
 
 ## Architecture Components
 
@@ -20,13 +20,16 @@ backend/
 │   ├── routes/              # API endpoints (✅ IMPLEMENTED)
 │   │   ├── market.py        # Market data and indicators
 │   │   ├── portfolio.py     # Portfolio state and trade history
-│   │   ├── analysis.py      # Run agent pipeline for trading decisions
-│   │   └── backtest.py      # Historical strategy backtesting
+│   │   ├── analysis.py      # Run agent pipeline and store recommendations
+│   │   ├── backtest.py      # Historical strategy backtesting
+│   │   ├── paper_trading.py # Binance testnet order management
+│   │   └── recommendations.py # AI recommendation tracking and execution
 │   ├── services/            # Business logic (✅ IMPLEMENTED)
 │   │   ├── binance.py       # Binance API client with caching
 │   │   ├── portfolio.py     # Trade execution and position management
 │   │   ├── indicators.py    # Technical indicators (RSI, MACD, EMAs)
-│   │   └── backtest.py      # Backtesting engine
+│   │   ├── backtest.py      # Backtesting engine
+│   │   └── paper_trading.py # Binance testnet integration (HMAC auth)
 │   └── agents/              # LLM agents (✅ IMPLEMENTED)
 │       ├── base.py          # BaseAgent, AnalystAgent, DecisionAgent
 │       ├── llm_client.py    # LLM integration with budget enforcement
@@ -53,13 +56,17 @@ frontend/
 │   ├── page.tsx             # Dashboard with live market data
 │   ├── layout.tsx           # Root layout with navigation
 │   ├── analysis/
-│   │   └── page.tsx         # Agent analysis results viewer
+│   │   └── page.tsx         # Agent analysis with recommendation display
 │   ├── portfolio/
-│   │   └── page.tsx         # Portfolio positions and trades
+│   │   └── page.tsx         # Portfolio, recommendations, and paper orders
+│   ├── paper-trading/
+│   │   └── page.tsx         # Binance testnet order management
 │   └── backtest/
 │       └── page.tsx         # Backtest interface with charts
 ├── components/
-│   └── Navigation.tsx       # Navigation bar
+│   ├── Navigation.tsx       # Navigation bar
+│   ├── DecisionDisplay.tsx  # Unified decision result display
+│   └── PaperTrading.tsx     # Order form, table, and account components
 ├── lib/
 │   └── api.ts               # Backend API client
 ├── types/
@@ -77,6 +84,8 @@ frontend/
 - `portfolio_snapshots` - Portfolio state snapshots over time
 - `agent_logs` - LLM call logs with tokens, cost, latency tracking
 - `backtest_runs` - Backtest metadata and performance metrics
+- `paper_orders` - Binance testnet orders with execution status
+- `agent_recommendations` - AI trading recommendations with execution tracking
 
 **Key Features:**
 - Alembic migrations for schema versioning
@@ -84,13 +93,17 @@ frontend/
 - Run ID isolation for backtests vs live simulation
 - Foreign key constraints for data integrity
 
-### Multi-Agent Decision Pipeline
+### Multi-Agent Advisory Pipeline
 
 ```
 Market Data → [Technical Analyst]   ─┐
-              [Sentiment Analyst]    ├─→ Researcher → Trader → Risk Manager → Final Decision
-              [Tokenomics Analyst]   ─┘
-              (parallel, cheap model)    (sequential, strong model)
+              [Sentiment Analyst]    ├─→ Researcher → Trader → Risk Manager → Recommendation
+              [Tokenomics Analyst]   ─┘                                            ↓
+              (parallel, cheap model)    (sequential, strong model)         [Stored in DB]
+                                                                                    ↓
+                                                                            [You Review & Decide]
+                                                                                    ↓
+                                                                       Execute on Testnet or Reject
 ```
 
 **Agent Roles:**
@@ -226,26 +239,43 @@ BaseAgent (abstract)
 
 ## Data Flow
 
-### Live Analysis Flow (Implemented)
+### Live Analysis & Recommendation Flow (Implemented)
 
-1. **User triggers analysis** via frontend (`/analysis` page) or API (`POST /api/analysis/run`)
+1. **User triggers analysis** via frontend (`/analysis` page) or API (`POST /analyze`)
 2. **Backend fetches latest candles** from Binance API (configurable timeframe and lookback)
 3. **Technical indicators calculated** using `IndicatorService` (RSI, MACD, EMAs, Bollinger Bands)
 4. **Agent pipeline executes:**
    - **Phase 1 (Parallel):** Technical, Sentiment, Tokenomics analysts analyze concurrently
    - **Phase 2 (Sequential):** Researcher synthesizes → Trader proposes → Risk Manager validates
-5. **Trade execution** (simulated):
-   - If approved, `PortfolioManager` executes trade at current market price
-   - Updates `trades`, `positions`, and `portfolio_snapshots` tables
-6. **Response returned** with all agent outputs, trade details, and portfolio state
-7. **Frontend displays** agent reasoning, trade decision, and updated portfolio
+5. **Recommendation stored** (NOT auto-executed):
+   - Creates `AgentRecommendation` record with action (BUY/SELL/HOLD), quantity, price, confidence, reasoning
+   - Status set to "pending"
+   - Links to run_id for tracking
+6. **Response returned** with all agent outputs and recommendation details
+7. **Frontend displays** recommendation card with:
+   - AI decision and confidence score
+   - Combined agent reasoning
+   - **Execute** button (redirects to paper trading) or **Reject** button
+
+**Human Decision Phase:**
+8. **User reviews recommendation** and chooses:
+   - **Execute:** Clicks "Execute on Testnet" → redirects to `/paper-trading`
+   - **Reject:** Marks recommendation as "rejected"
+   - **Ignore:** Recommendation remains "pending" (can expire later)
+
+**Execution Flow (if user executes):**
+9. **POST /recommendations/{id}/execute** creates Binance testnet order
+10. **PaperTradingService** sends HMAC-signed request to testnet API
+11. **Order filled** by testnet exchange (instant for market orders)
+12. **Recommendation updated:** Status → "executed", `executed_order_id` set
+13. **User can track** on Portfolio page (Recommendations tab shows history)
 
 **Key Implementation Details:**
+- No auto-execution - AI recommends, human decides
 - Async execution for parallel analyst phase
-- Context passed through pipeline with market data, indicators, portfolio state
-- LLM responses parsed into structured JSON
 - Budget checked before each LLM call
 - All agent interactions logged to `agent_logs` table
+- Recommendations persist for audit trail
 
 ### Backtesting Flow (Implemented)
 
@@ -280,24 +310,35 @@ BaseAgent (abstract)
 
 ## API Endpoints (All Implemented)
 
-### Market Data (`/api/market`)
-- `GET /candles` - Fetch OHLCV data for symbol/timeframe
-- `GET /indicators` - Calculate technical indicators for latest data
-- `GET /price` - Current market price for symbol
+### Market Data (`/market`)
+- `GET /symbols` - Available trading symbols
+- `GET /{symbol}/latest` - Latest candles and indicators
 
-### Portfolio (`/api/portfolio`)
-- `GET /summary` - Current portfolio state (cash, positions, equity)
-- `GET /positions` - All open positions
+### Portfolio (`/portfolio`)
+- `GET /` - Current portfolio state (cash, positions, equity)
 - `GET /trades` - Trade history with optional filtering
-- `POST /reset` - Reset portfolio to initial state
 
-### Analysis (`/api/analysis`)
-- `POST /run` - Execute agent pipeline and get trading decision
-- `GET /logs` - Agent execution logs with token/cost tracking
+### Analysis (`/analyze`)
+- `POST /` - Execute agent pipeline and get recommendation
 
-### Backtest (`/api/backtest`)
+### Recommendations (`/recommendations`)
+- `GET /` - List all recommendations (filter by status/symbol)
+- `GET /{id}` - Get specific recommendation details
+- `POST /{id}/execute` - Execute recommendation via paper trading
+- `POST /{id}/reject` - Reject recommendation
+
+### Paper Trading (`/paper-trading`)
+- `POST /orders` - Create new paper trading order on testnet
+- `GET /orders/open` - Get open orders
+- `GET /orders/history` - Get order history
+- `DELETE /orders/{id}` - Cancel order
+- `GET /account` - Get testnet account balances
+- `POST /orders/sync` - Sync testnet orders with database
+
+### Backtest (`/backtest`)
 - `POST /run` - Run historical backtest with parameters
 - `GET /runs` - List all backtest runs
+- `GET /runs/{run_id}` - Get specific backtest results
 - `GET /runs/{run_id}` - Detailed backtest results with equity curve
 
 **Response Format:**
@@ -342,6 +383,55 @@ DAILY_TOKEN_BUDGET=1000000  # 1M tokens/day
 CHEAP_MODEL=deepseek-chat-v3-0324:free  # ~$0 per 1M tokens
 STRONG_MODEL=kimi-k2-thinking  # ~$0.30 per 1M tokens (approx)
 ```
+
+## Key Architectural Decisions
+
+### Human-in-the-Loop Design
+
+**Why Recommendations Instead of Auto-Execution?**
+
+The system uses a **recommendation-based** architecture where AI agents **suggest** trades but humans **decide** and **execute**. This reflects realistic production systems and demonstrates proper AI system design:
+
+**Benefits:**
+1. **Responsibility & Accountability** - Clear audit trail of who decided what
+2. **Risk Management** - Human oversight prevents AI errors from causing harm
+3. **Regulatory Compliance** - Many jurisdictions require human approval for financial decisions
+4. **Learning & Improvement** - Track recommendation quality vs. human decisions
+5. **Portfolio Demonstration** - Shows understanding of AI limitations and production workflows
+
+**Implementation:**
+- `AgentRecommendation` model stores all AI suggestions with status tracking
+- Recommendations linked to `PaperOrder` when executed (audit trail)
+- Frontend clearly separates AI analysis from execution controls
+- Portfolio page shows recommendation history alongside actual trades
+
+**Alternative Considered:** Auto-execution mode was initially implemented but removed because it:
+- Blurred responsibility lines (who made the trade - AI or user?)
+- Made portfolio value tracking confusing (simulation vs. testnet)
+- Didn't reflect real-world production constraints
+- Less impressive for hiring managers (looks like autopilot rather than advisory system)
+
+### Binance Testnet Integration
+
+**Why Real API Instead of Full Simulation?**
+
+The system integrates with Binance's official testnet API rather than simulating order execution entirely locally:
+
+**Benefits:**
+1. **Authentic Experience** - Real API responses, rate limits, order matching
+2. **Portfolio Value** - Demonstrates API integration skills to employers
+3. **Realistic Testing** - Testnet behaves like production (except with fake funds)
+4. **Order Management** - Real order lifecycle (pending → filled → complete)
+5. **Market Conditions** - Tests against live testnet matching engine
+
+**Technical Details:**
+- HMAC SHA256 authentication (same as production Binance)
+- Order types: MARKET, LIMIT, STOP_LOSS, TAKE_PROFIT
+- Time-in-force options: GTC, IOC, FOK
+- Real account balances tracked via `/api/v3/account`
+- Order status updates via `/api/v3/order`
+
+**Fallback:** Local simulation mode available if testnet credentials not configured.
 
 ## Technology Stack
 

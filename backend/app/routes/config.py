@@ -27,8 +27,12 @@ async def get_trading_mode():
     """
     engine_info = DecisionEngineFactory.get_current_engine_info()
     
+    # Add LLM availability info
+    engine_info["llm_enabled"] = settings.llm_enabled
+    engine_info["available_modes"] = ["rule"] if not settings.llm_enabled else ["llm", "rule"]
+    
     return TradingModeResponse(
-        mode=settings.trading_mode,
+        mode=settings.default_engine_mode,
         engine_info=engine_info
     )
 

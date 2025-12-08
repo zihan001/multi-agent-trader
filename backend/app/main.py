@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routes import market, portfolio, analysis, backtest, config
+from app.routes import market, portfolio, analysis, backtest, config, paper_trading, recommendations
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -50,8 +50,11 @@ async def health_check():
     return {
         "status": "ok",
         "environment": settings.environment,
-        "trading_mode": settings.trading_mode,
-        "rule_strategy": settings.rule_strategy if settings.trading_mode == "rule" else None
+        "default_engine_mode": settings.default_engine_mode,
+        "llm_enabled": settings.llm_enabled,
+        "rule_strategy": settings.rule_strategy,
+        "paper_trading_enabled": settings.paper_trading_enabled,
+        "paper_trading_mode": settings.paper_trading_mode if settings.paper_trading_enabled else None
     }
 
 
@@ -61,6 +64,8 @@ app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(config.router)
 app.include_router(analysis.router)
 app.include_router(backtest.router)
+app.include_router(paper_trading.router)
+app.include_router(recommendations.router)
 
 
 if __name__ == "__main__":

@@ -10,9 +10,11 @@ from datetime import datetime
 from app.core.database import get_db
 from app.engines.factory import DecisionEngineFactory
 from app.models.decisions import AnalysisRequest, AnalysisResponse, DecisionResult
+from app.models.database import AgentRecommendation
 from app.services.binance import BinanceService, get_latest_candles
 from app.services.indicators import IndicatorService
 from app.services.portfolio import PortfolioManager
+from app.services.paper_trading import PaperTradingService
 from app.core.config import settings
 import pandas as pd
 
@@ -35,12 +37,13 @@ async def run_analysis(
     5. Updates portfolio
     6. Returns comprehensive analysis results
     
-    The engine type is determined by settings.trading_mode:
-    - "llm": Six-agent LLM system with natural language reasoning
-    - "rule": Deterministic technical indicator strategies (zero cost)
+    The engine type can be specified via engine_mode parameter:
+    - \"llm\": Six-agent LLM system with natural language reasoning (requires LLM_API_KEY)
+    - \"rule\": Deterministic technical indicator strategies (zero cost, always available)
+    - If not specified, defaults to LLM if API key configured, otherwise rule-based
     
     Args:
-        request: Analysis request parameters
+        request: Analysis request parameters (symbol, mode, engine_mode)
         db: Database session
         
     Returns:
@@ -122,15 +125,34 @@ async def run_analysis(
             "token_data": {},  # Mock for now
         }
         
-        # Get current portfolio state
-        portfolio_manager = PortfolioManager(db)
+        # Get current portfolio state (always use simulation for portfolio tracking)
+        portfolio_manager = PortfolioManager(db, use_paper_trading=False)
         portfolio_data = portfolio_manager.get_portfolio_summary()
         
+        # Validate engine mode if provided
+        engine_mode = request.engine_mode
+        if engine_mode:
+            # Check if LLM mode is requested but not available
+            llm_enabled = bool(settings.llm_api_key and settings.llm_api_key != "")
+            if engine_mode == "llm" and not llm_enabled:
+                raise HTTPException(
+                    status_code=400,
+                    detail="LLM mode is not available. Please configure LLM_API_KEY or use 'rule' mode."
+                )
+            if engine_mode not in ["llm", "rule"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid engine_mode '{engine_mode}'. Must be 'llm' or 'rule'."
+                )
+        
         # Create decision engine using factory pattern
-        engine = DecisionEngineFactory.create(db)
+        engine = DecisionEngineFactory.create(db, trading_mode=engine_mode)
         
         # Generate run ID
         run_id = f"run_{datetime.utcnow().isoformat()}"
+        
+        # Log which engine is being used
+        print(f"[{run_id}] Using engine: {engine.engine_type} (requested mode: {engine_mode}, default: {settings.default_engine_mode})")
         
         # Run decision engine (works for both LLM and rule modes)
         result: DecisionResult = await engine.aanalyze(
@@ -140,39 +162,128 @@ async def run_analysis(
             run_id=run_id,
         )
         
-        # Execute approved trade if action is BUY or SELL
-        trade_executed = None
+        # Store recommendation in database (not auto-executed)
+        recommendation = None
         decision = result.decision
         
-        if decision.action in ["BUY", "SELL"]:
+        # Normalize action to uppercase for consistency
+        if decision.action:
+            decision.action = decision.action.upper()
+        
+        if decision.action in ["BUY", "SELL", "HOLD"]:
             try:
-                portfolio_manager.execute_trade(
+                # Extract reasoning from agent outputs
+                reasoning_parts = []
+                if result.technical_analysis:
+                    reasoning_parts.append(f"Technical: {result.technical_analysis.get('reasoning', '')}")
+                if result.sentiment_analysis:
+                    reasoning_parts.append(f"Sentiment: {result.sentiment_analysis.get('reasoning', '')}")
+                if result.risk_analysis:
+                    reasoning_parts.append(f"Risk: {result.risk_analysis.get('reasoning', '')}")
+                
+                reasoning = " | ".join(reasoning_parts) if reasoning_parts else decision.reasoning
+                
+                # Extract risk management fields from decision metadata
+                stop_loss = None
+                take_profit = None
+                position_size_pct = None
+                time_horizon = None
+                
+                # Try to extract from decision metadata (populated by engines)
+                if hasattr(decision, 'stop_loss'):
+                    stop_loss = decision.stop_loss
+                if hasattr(decision, 'take_profit'):
+                    take_profit = decision.take_profit
+                if hasattr(decision, 'position_size_pct'):
+                    position_size_pct = decision.position_size_pct
+                if hasattr(decision, 'time_horizon'):
+                    time_horizon = decision.time_horizon
+                
+                # Calculate defaults if not provided
+                if decision.action == "BUY" and not stop_loss:
+                    # Default SL: 5% below entry
+                    stop_loss = current_price * 0.95
+                elif decision.action == "SELL" and not stop_loss:
+                    # Default SL: 5% above entry
+                    stop_loss = current_price * 1.05
+                
+                if decision.action in ["BUY", "SELL"] and not take_profit:
+                    # Default TP: 10% profit target
+                    if decision.action == "BUY":
+                        take_profit = current_price * 1.10
+                    else:
+                        take_profit = current_price * 0.90
+                
+                if not position_size_pct and decision.quantity:
+                    # Calculate position size % from quantity
+                    total_equity = portfolio_data.get("total_equity", 0)
+                    if total_equity > 0:
+                        position_value = decision.quantity * current_price
+                        position_size_pct = position_value / total_equity
+                
+                # Default time horizon based on strategy/mode
+                if not time_horizon:
+                    time_horizon = "4h"  # Default to 4-hour horizon
+                
+                # Determine the actual engine type used (from metadata or request)
+                actual_engine_type = result.metadata.engine_type if result.metadata else (engine_mode or settings.default_engine_mode)
+                
+                print(f"[{run_id}] Storing recommendation with decision_type: {actual_engine_type} (from metadata: {result.metadata.engine_type if result.metadata else 'N/A'})")
+                
+                # Create recommendation record
+                rec = AgentRecommendation(
+                    run_id=run_id,
                     symbol=symbol,
-                    side=decision.action,
-                    quantity=decision.quantity,
+                    action=decision.action,
+                    quantity=decision.quantity if decision.action != "HOLD" else None,
                     price=current_price,
+                    confidence=decision.confidence,
+                    reasoning=reasoning,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    position_size_pct=position_size_pct,
+                    time_horizon=time_horizon,
+                    status="pending",
+                    decision_type=actual_engine_type,  # Use actual engine type from metadata
+                    strategy_name=decision.strategy if hasattr(decision, 'strategy') else None,
                 )
-                print(f"[{run_id}] Executed trade: {decision.action} {decision.quantity} {symbol}")
-                trade_executed = {
-                    "symbol": symbol,
-                    "action": decision.action,
-                    "quantity": decision.quantity,
-                    "price": current_price,
+                db.add(rec)
+                db.commit()
+                db.refresh(rec)
+                
+                print(f"[{run_id}] Recommendation stored with ID: {rec.id}, decision_type: {rec.decision_type}")
+                
+                recommendation = {
+                    "id": rec.id,
+                    "symbol": rec.symbol,
+                    "action": rec.action,
+                    "quantity": rec.quantity,
+                    "price": rec.price,
+                    "confidence": rec.confidence,
+                    "reasoning": rec.reasoning,
+                    "stop_loss": rec.stop_loss,
+                    "take_profit": rec.take_profit,
+                    "position_size_pct": rec.position_size_pct,
+                    "time_horizon": rec.time_horizon,
+                    "status": rec.status,
+                    "created_at": rec.created_at.isoformat(),
                 }
-            except Exception as trade_error:
-                print(f"[{run_id}] Error executing trade: {trade_error}")
+                
+                print(f"[{run_id}] Stored recommendation: {decision.action} {decision.quantity} {symbol} (ID: {rec.id})")
+            except Exception as rec_error:
+                print(f"[{run_id}] Error storing recommendation: {rec_error}")
                 result.errors.append({
-                    "type": "trade_execution_error",
-                    "message": str(trade_error)
+                    "type": "recommendation_storage_error",
+                    "message": str(rec_error)
                 })
         
-        # Get updated portfolio
-        updated_portfolio = portfolio_manager.get_portfolio_summary()
+        # Get portfolio (unchanged by this analysis)
+        portfolio = portfolio_manager.get_portfolio_summary()
         
         return AnalysisResponse(
             result=result,
-            portfolio_updated=trade_executed is not None,
-            trade_executed=trade_executed,
+            portfolio_updated=False,  # No auto-execution
+            recommendation=recommendation,
         )
         
     except HTTPException:

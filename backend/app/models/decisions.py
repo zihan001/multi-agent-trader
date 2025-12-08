@@ -23,8 +23,11 @@ class TradingDecision(BaseModel):
     quantity: float = Field(default=0.0, description="Amount to trade")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score 0-1")
     reasoning: str = Field(default="", description="Human-readable explanation")
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    stop_loss: Optional[float] = Field(default=None, description="Stop loss price level")
+    take_profit: Optional[float] = Field(default=None, description="Take profit price level")
+    position_size_pct: Optional[float] = Field(default=None, description="Position size as percentage of portfolio (0-1)")
+    time_horizon: Optional[str] = Field(default=None, description="Expected holding period (e.g., '1h', '4h', '1d')")
+    strategy: Optional[str] = Field(default=None, description="Strategy name for rule-based engines")
 
 
 class DecisionMetadata(BaseModel):
@@ -76,6 +79,28 @@ class DecisionResult(BaseModel):
     status: str = Field(default="completed", description="completed, failed, partial")
     errors: List[Dict[str, str]] = Field(default_factory=list)
     
+    # Backwards compatibility properties for frontend
+    @property
+    def technical_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract technical analysis from agents."""
+        if self.agents and "technical" in self.agents:
+            return self.agents["technical"].analysis
+        return None
+    
+    @property
+    def sentiment_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract sentiment analysis from agents."""
+        if self.agents and "sentiment" in self.agents:
+            return self.agents["sentiment"].analysis
+        return None
+    
+    @property
+    def risk_analysis(self) -> Optional[Dict[str, Any]]:
+        """Extract risk analysis from agents."""
+        if self.agents and "risk" in self.agents:
+            return self.agents["risk"].analysis
+        return None
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -106,6 +131,7 @@ class AnalysisRequest(BaseModel):
     """Request to run trading analysis."""
     symbol: str
     mode: str = Field(default="live", description="live or backtest_step")
+    engine_mode: Optional[str] = Field(default=None, description="llm or rule (defaults to settings.default_engine_mode)")
     timestamp: Optional[str] = None
 
 
@@ -113,4 +139,7 @@ class AnalysisResponse(BaseModel):
     """Response from analysis endpoint."""
     result: DecisionResult
     portfolio_updated: bool = Field(default=False)
-    trade_executed: Optional[Dict[str, Any]] = None
+    recommendation: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Stored recommendation (not auto-executed)"
+    )

@@ -1,8 +1,65 @@
 // Health check
 export interface HealthResponse {
   status: string;
-  trading_mode?: string;
+  default_engine_mode?: string;
+  llm_enabled?: boolean;
   rule_strategy?: string;
+  environment?: string;
+  paper_trading_enabled?: boolean;
+  paper_trading_mode?: string;
+}
+
+// Paper Trading types
+export interface PaperOrder {
+  id: number;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  order_type: 'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'TAKE_PROFIT';
+  quantity: number;
+  price: number | null;
+  stop_price: number | null;
+  filled_quantity: number;
+  avg_fill_price: number;
+  status: 'PENDING' | 'FILLED' | 'CANCELLED' | 'REJECTED';
+  time_in_force: 'GTC' | 'IOC' | 'FOK';
+  run_id: string;
+  created_at: string;
+  updated_at: string | null;
+  binance_order_id: number | null;
+}
+
+export interface PaperAccountBalance {
+  asset: string;
+  free: string;
+  locked: string;
+}
+
+export interface PaperAccount {
+  balances: PaperAccountBalance[];
+  canTrade: boolean;
+  canWithdraw: boolean;
+  canDeposit: boolean;
+}
+
+export interface AgentRecommendation {
+  id: number;
+  run_id: string;
+  symbol: string;
+  action: 'BUY' | 'SELL' | 'HOLD';
+  quantity: number | null;
+  price: number;
+  confidence: number | null;
+  reasoning: string | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  position_size_pct: number | null;
+  time_horizon: string | null;
+  status: 'pending' | 'executed' | 'rejected' | 'expired';
+  decision_type: string;
+  strategy_name: string | null;
+  executed_order_id: number | null;
+  created_at: string;
+  updated_at: string | null;
 }
 
 // Market data types
@@ -150,7 +207,18 @@ export interface AnalysisRequest {
 export interface AnalysisResponse {
   result: DecisionResult;
   portfolio_updated: boolean;
-  trade_executed?: Trade;
+  recommendation?: {
+    id: number;
+    symbol: string;
+    action: string;
+    quantity: number | null;
+    price: number;
+    confidence: number | null;
+    reasoning: string | null;
+    status: string;
+    created_at: string;
+    executed_order_id?: number | null;
+  };
   portfolio_snapshot?: PortfolioSnapshot;
   errors?: Array<{ type: string; message: string }>;
 }

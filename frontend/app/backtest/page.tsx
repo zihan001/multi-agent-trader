@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { runBacktest, getTradingMode, getEngineCapabilities } from '@/lib/api';
+import { runBacktest, getTradingMode, getEngineCapabilities, getHealth } from '@/lib/api';
 import type { BacktestResult, TradingModeResponse, EngineCapabilitiesResponse } from '@/types/api';
 import BacktestResults from '@/components/BacktestResults';
 import { PlayCircle, Info } from 'lucide-react';
@@ -25,6 +25,7 @@ export default function Backtest() {
   // Config state
   const [tradingMode, setTradingMode] = useState<TradingModeResponse | null>(null);
   const [capabilities, setCapabilities] = useState<EngineCapabilitiesResponse | null>(null);
+  const [llmEnabled, setLlmEnabled] = useState<boolean>(false);
 
   const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT'];
   const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
@@ -38,14 +39,17 @@ export default function Backtest() {
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const [modeData, capData] = await Promise.all([
+        const [healthData, modeData, capData] = await Promise.all([
+          getHealth(),
           getTradingMode(),
           getEngineCapabilities(),
         ]);
+        const isLlmAvailable = healthData.llm_enabled || false;
+        setLlmEnabled(isLlmAvailable);
         setTradingMode(modeData);
         setCapabilities(capData);
-        // Default to current trading mode
-        setEngineType(modeData.mode === 'llm' ? 'llm' : 'vectorbt');
+        // Default to vectorbt, or LLM if it's available and set as default
+        setEngineType(isLlmAvailable && modeData.mode === 'llm' ? 'llm' : 'vectorbt');
       } catch (err) {
         console.error('Failed to load config:', err);
       }
@@ -99,9 +103,9 @@ export default function Backtest() {
           {/* Engine Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-3">
-              Backtest Engine
+              Backtest Engine {!llmEnabled && <span className="text-gray-500 text-xs">(LLM mode not available - API key not configured)</span>}
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`grid grid-cols-1 ${llmEnabled ? 'md:grid-cols-2' : ''} gap-4`}>
               <button
                 type="button"
                 onClick={() => setEngineType('vectorbt')}
@@ -127,30 +131,32 @@ export default function Backtest() {
                 </div>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setEngineType('llm')}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  engineType === 'llm'
-                    ? 'border-purple-500 bg-purple-900/20'
-                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-white">LLM Engine</h3>
-                  <span className="px-2 py-1 bg-yellow-900 text-yellow-200 text-xs rounded">
-                    Slow & Costly
-                  </span>
-                </div>
-                <p className="text-sm text-gray-400 mb-2">
-                  6-agent pipeline with detailed reasoning
-                </p>
-                <div className="text-xs text-gray-500">
-                  <span>• ~15s per decision</span><br />
-                  <span>• ~$0.02 per decision</span><br />
-                  <span>• Limited decision count</span>
-                </div>
-              </button>
+              {llmEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setEngineType('llm')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    engineType === 'llm'
+                      ? 'border-purple-500 bg-purple-900/20'
+                      : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-white">LLM Engine</h3>
+                    <span className="px-2 py-1 bg-yellow-900 text-yellow-200 text-xs rounded">
+                      Slow & Costly
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400 mb-2">
+                    6-agent pipeline with detailed reasoning
+                  </p>
+                  <div className="text-xs text-gray-500">
+                    <span>• ~15s per decision</span><br />
+                    <span>• ~$0.02 per decision</span><br />
+                    <span>• Limited decision count</span>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 

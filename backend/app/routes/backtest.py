@@ -74,7 +74,7 @@ async def run_backtest(
         symbol = request.symbol.upper()
         
         # Create backtest engine using factory
-        engine_type = request.engine_type or settings.trading_mode
+        engine_type = request.engine_type or settings.default_engine_mode
         strategy = request.strategy or settings.rule_strategy
         
         engine = BacktestEngineFactory.create(

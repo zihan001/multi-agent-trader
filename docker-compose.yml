@@ -43,6 +43,10 @@ services:
       BB_PERIOD: ${BB_PERIOD:-20}
       BB_STD_DEV: ${BB_STD_DEV:-2}
       MIN_VOLUME_RATIO: ${MIN_VOLUME_RATIO:-1.5}
+      PAPER_TRADING_MODE: ${PAPER_TRADING_MODE:-simulation}
+      BINANCE_TESTNET_BASE_URL: ${BINANCE_TESTNET_BASE_URL:-https://testnet.binance.vision}
+      BINANCE_TESTNET_API_KEY: ${BINANCE_TESTNET_API_KEY}
+      BINANCE_TESTNET_API_SECRET: ${BINANCE_TESTNET_API_SECRET}
     depends_on:
       db:
         condition: service_healthy

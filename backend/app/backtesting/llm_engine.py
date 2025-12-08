@@ -105,7 +105,8 @@ class LLMBacktestEngine(BaseBacktestEngine):
         self.db.add(snapshot)
         self.db.commit()
         
-        portfolio_manager = PortfolioManager(self.db, run_id)
+        # Never use paper trading for backtests (historical data only)
+        portfolio_manager = PortfolioManager(self.db, run_id, use_paper_trading=False)
         
         # Create decision engine
         engine = DecisionEngineFactory.create(self.db)

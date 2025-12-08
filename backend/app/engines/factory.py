@@ -31,18 +31,20 @@ class DecisionEngineFactory:
         
         Args:
             db: Database session
-            trading_mode: Override trading mode (defaults to settings.trading_mode)
+            trading_mode: Override engine mode (defaults to settings.default_engine_mode)
             llm_client: Optional LLM client for LLM mode
             
         Returns:
             BaseDecisionEngine instance
             
         Raises:
-            ValueError: If trading_mode is invalid
+            ValueError: If trading_mode is invalid or LLM requested but not available
         """
-        mode = trading_mode or settings.trading_mode
+        mode = trading_mode or settings.default_engine_mode
         
         if mode == "llm":
+            if not settings.llm_enabled:
+                raise ValueError("LLM mode requested but LLM API key not configured")
             return LLMDecisionEngine(db=db, llm_client=llm_client)
         elif mode == "rule":
             return RuleEngine(db=db, strategy=settings.rule_strategy)
@@ -100,11 +102,11 @@ class DecisionEngineFactory:
             Dictionary with current engine information
         """
         all_engines = DecisionEngineFactory.get_available_engines()
-        current_mode = settings.trading_mode
+        current_mode = settings.default_engine_mode
         
         if current_mode not in all_engines:
             return {
-                "error": f"Invalid trading_mode: {current_mode}",
+                "error": f"Invalid engine mode: {current_mode}",
                 "valid_modes": list(all_engines.keys())
             }
         

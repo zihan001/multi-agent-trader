@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.database import Trade, Position, PortfolioSnapshot
 from app.core.config import settings
+from app.services.paper_trading import PaperTradingService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,16 +16,22 @@ logger = logging.getLogger(__name__)
 class PortfolioManager:
     """Manages simulated portfolio state and trade execution."""
     
-    def __init__(self, db: Session, run_id: str = "live"):
+    def __init__(self, db: Session, run_id: str = "live", use_paper_trading: bool = False):
         """
         Initialize portfolio manager.
         
         Args:
             db: Database session
             run_id: Identifier for this run (live, backtest ID, etc.)
+            use_paper_trading: If True, execute trades via Binance testnet API
         """
         self.db = db
         self.run_id = run_id
+        self.use_paper_trading = use_paper_trading
+        self.paper_trading_service = PaperTradingService(db) if use_paper_trading else None
+        
+        if use_paper_trading:
+            logger.info(f"[{run_id}] PortfolioManager initialized with Binance testnet paper trading")
     
     def get_cash_balance(self) -> float:
         """Get current cash balance."""
@@ -101,6 +108,21 @@ class PortfolioManager:
             if not position or position.quantity < quantity:
                 current_qty = position.quantity if position else 0
                 raise ValueError(f"Insufficient position: need {quantity}, have {current_qty}")
+        
+        # Execute via paper trading service if enabled
+        if self.use_paper_trading and self.paper_trading_service:
+            try:
+                paper_order = self.paper_trading_service.create_order(
+                    symbol=symbol,
+                    side=side,
+                    order_type="MARKET",
+                    quantity=quantity,
+                    run_id=self.run_id
+                )
+                logger.info(f"Paper trade executed: {paper_order['binance_order_id']}")
+            except Exception as e:
+                logger.error(f"Paper trading failed: {e}")
+                raise ValueError(f"Paper trading execution failed: {e}")
         
         # Create trade record
         trade = Trade(

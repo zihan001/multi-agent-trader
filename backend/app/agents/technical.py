@@ -4,9 +4,11 @@ Technical Analyst Agent
 Analyzes price action and technical indicators to provide trading insights.
 """
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Type
+from pydantic import BaseModel
 
 from app.agents.base import AnalystAgent
+from app.agents.models import TechnicalAnalysis
 
 
 class TechnicalAnalyst(AnalystAgent):
@@ -27,6 +29,10 @@ class TechnicalAnalyst(AnalystAgent):
     @property
     def role(self) -> str:
         return "Technical Analysis Specialist"
+    
+    def get_response_model(self) -> Type[BaseModel]:
+        """Return Pydantic model for structured outputs."""
+        return TechnicalAnalysis
     
     def build_prompt(self, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """
@@ -56,13 +62,22 @@ class TechnicalAnalyst(AnalystAgent):
 
 Your role is to analyze price action and technical indicators to determine market direction and strength.
 
-Provide clear, actionable technical analysis based on:
-- Price trends and momentum
-- Technical indicators (RSI, MACD, EMAs)
-- Support and resistance levels
-- Volume patterns
+**IMPORTANT**: Return ONLY the structured data in JSON format. Do NOT wrap your response in markdown code blocks or any other formatting.
 
-Be concise but thorough. Focus on what matters for trading decisions."""
+**CHAIN-OF-THOUGHT REASONING REQUIRED:**
+Think step-by-step through your analysis in the 'thought_process' field:
+1. First, assess the overall trend (bullish/bearish/sideways)
+2. Then, evaluate momentum indicators (RSI, MACD)
+3. Next, identify key support/resistance levels
+4. Analyze volume patterns and their implications
+5. Finally, synthesize everything into a clear recommendation
+
+**CONFIDENCE GUIDELINES:**
+- High confidence (80-100): Clear trend, aligned indicators, strong volume confirmation
+- Medium confidence (50-79): Mixed signals, some conflicting indicators
+- Low confidence (<50): Unclear trend, contradictory signals, low volume
+
+Be thorough and show your reasoning process. Quality over speed."""
 
         user_prompt = f"""Analyze the technical situation for {symbol} on the {timeframe} timeframe.
 
@@ -73,9 +88,22 @@ TECHNICAL INDICATORS:
 
 RECENT CANDLES (close,volume): {', '.join(candle_summary)}
 
-Return JSON with fields: trend, strength, key_levels (support[], resistance[]), indicators_summary (rsi, macd, emas), momentum, volume_analysis, key_observations[], recommendation, confidence (0-100), reasoning.
+**REQUIRED OUTPUT:**
+You MUST provide ALL of the following fields:
+- thought_process: Your step-by-step reasoning
+- trend: bullish/bearish/sideways/uncertain  
+- strength: strong/moderate/weak
+- key_levels: {{support: [...], resistance: [...]}}
+- indicators_summary: {{rsi: "...", macd: "...", emas: "..."}}
+- momentum: momentum assessment string
+- volume_analysis: volume pattern analysis string
+- key_observations: list of 1-5 key points
+- recommendation: strong_buy/buy/hold/sell/strong_sell
+- confidence: number 0-100
+- reasoning: why you made this recommendation
+- risk_factors: list of 0-5 risk factors
 
-Respond ONLY with valid JSON."""
+Analyze the technical setup and provide ALL required fields."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -107,19 +135,24 @@ Respond ONLY with valid JSON."""
             # Try to parse as JSON
             analysis = json.loads(response)
             
-            # Validate required fields
+            # Validate required fields (now includes thought_process and risk_factors)
             required_fields = [
-                "trend", "strength", "key_levels", "indicators_summary",
+                "thought_process", "trend", "strength", "key_levels", "indicators_summary",
                 "momentum", "volume_analysis", "key_observations",
-                "recommendation", "confidence", "reasoning"
+                "recommendation", "confidence", "reasoning", "risk_factors"
             ]
             
             for field in required_fields:
                 if field not in analysis:
-                    analysis[field] = None
+                    if field in ["key_observations", "risk_factors"]:
+                        analysis[field] = []
+                    elif field in ["key_levels", "indicators_summary"]:
+                        analysis[field] = {}
+                    else:
+                        analysis[field] = None
             
             # Ensure confidence is a number
-            if isinstance(analysis["confidence"], str):
+            if isinstance(analysis.get("confidence"), str):
                 analysis["confidence"] = int(analysis["confidence"])
             
             return analysis
@@ -127,6 +160,7 @@ Respond ONLY with valid JSON."""
         except json.JSONDecodeError:
             # If JSON parsing fails, return error structure
             return {
+                "thought_process": "Error parsing LLM response",
                 "trend": "unknown",
                 "strength": "unknown",
                 "key_levels": {"support": [], "resistance": []},
@@ -137,5 +171,6 @@ Respond ONLY with valid JSON."""
                 "recommendation": "hold",
                 "confidence": 0,
                 "reasoning": f"Failed to parse response: {response[:200]}",
+                "risk_factors": ["Unable to analyze due to parsing error"],
                 "parse_error": True
             }

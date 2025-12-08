@@ -131,7 +131,11 @@ class AnalysisRequest(BaseModel):
     """Request to run trading analysis."""
     symbol: str
     mode: str = Field(default="live", description="live or backtest_step")
+    run_id: Optional[str] = Field(default=None, description="Run identifier (defaults to 'live' for production)")
+    timeframe: str = Field(default="1h", description="Timeframe for analysis (1m, 5m, 15m, 1h, 4h, 1d)")
     engine_mode: Optional[str] = Field(default=None, description="llm or rule (defaults to settings.default_engine_mode)")
+    use_react: bool = Field(default=False, description="Use custom ReAct agents (deprecated, use use_langchain)")
+    use_langchain: bool = Field(default=False, description="Use LangChain agents for Researcher, Trader, and Risk Manager")
     timestamp: Optional[str] = None
 
 

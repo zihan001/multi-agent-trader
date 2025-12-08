@@ -37,12 +37,13 @@ async def run_analysis(
     5. Updates portfolio
     6. Returns comprehensive analysis results
     
-    The engine type is determined by settings.trading_mode:
-    - "llm": Six-agent LLM system with natural language reasoning
-    - "rule": Deterministic technical indicator strategies (zero cost)
+    The engine type can be specified via engine_mode parameter:
+    - \"llm\": Six-agent LLM system with natural language reasoning (requires LLM_API_KEY)
+    - \"rule\": Deterministic technical indicator strategies (zero cost, always available)
+    - If not specified, defaults to LLM if API key configured, otherwise rule-based
     
     Args:
-        request: Analysis request parameters
+        request: Analysis request parameters (symbol, mode, engine_mode)
         db: Database session
         
     Returns:
@@ -128,11 +129,30 @@ async def run_analysis(
         portfolio_manager = PortfolioManager(db, use_paper_trading=False)
         portfolio_data = portfolio_manager.get_portfolio_summary()
         
+        # Validate engine mode if provided
+        engine_mode = request.engine_mode
+        if engine_mode:
+            # Check if LLM mode is requested but not available
+            llm_enabled = bool(settings.llm_api_key and settings.llm_api_key != "")
+            if engine_mode == "llm" and not llm_enabled:
+                raise HTTPException(
+                    status_code=400,
+                    detail="LLM mode is not available. Please configure LLM_API_KEY or use 'rule' mode."
+                )
+            if engine_mode not in ["llm", "rule"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid engine_mode '{engine_mode}'. Must be 'llm' or 'rule'."
+                )
+        
         # Create decision engine using factory pattern
-        engine = DecisionEngineFactory.create(db)
+        engine = DecisionEngineFactory.create(db, trading_mode=engine_mode)
         
         # Generate run ID
         run_id = f"run_{datetime.utcnow().isoformat()}"
+        
+        # Log which engine is being used
+        print(f"[{run_id}] Using engine: {engine.engine_type} (requested mode: {engine_mode}, default: {settings.default_engine_mode})")
         
         # Run decision engine (works for both LLM and rule modes)
         result: DecisionResult = await engine.aanalyze(
@@ -145,6 +165,10 @@ async def run_analysis(
         # Store recommendation in database (not auto-executed)
         recommendation = None
         decision = result.decision
+        
+        # Normalize action to uppercase for consistency
+        if decision.action:
+            decision.action = decision.action.upper()
         
         if decision.action in ["BUY", "SELL", "HOLD"]:
             try:
@@ -201,6 +225,11 @@ async def run_analysis(
                 if not time_horizon:
                     time_horizon = "4h"  # Default to 4-hour horizon
                 
+                # Determine the actual engine type used (from metadata or request)
+                actual_engine_type = result.metadata.engine_type if result.metadata else (engine_mode or settings.default_engine_mode)
+                
+                print(f"[{run_id}] Storing recommendation with decision_type: {actual_engine_type} (from metadata: {result.metadata.engine_type if result.metadata else 'N/A'})")
+                
                 # Create recommendation record
                 rec = AgentRecommendation(
                     run_id=run_id,
@@ -215,12 +244,14 @@ async def run_analysis(
                     position_size_pct=position_size_pct,
                     time_horizon=time_horizon,
                     status="pending",
-                    decision_type=settings.trading_mode,  # "llm" or "rule"
+                    decision_type=actual_engine_type,  # Use actual engine type from metadata
                     strategy_name=decision.strategy if hasattr(decision, 'strategy') else None,
                 )
                 db.add(rec)
                 db.commit()
                 db.refresh(rec)
+                
+                print(f"[{run_id}] Recommendation stored with ID: {rec.id}, decision_type: {rec.decision_type}")
                 
                 recommendation = {
                     "id": rec.id,

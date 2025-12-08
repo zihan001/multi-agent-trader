@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMarketSymbols, getMarketData, runAnalysis, getRecommendations } from '@/lib/api';
+import { getHealth, getMarketSymbols, getMarketData, runAnalysis, getRecommendations } from '@/lib/api';
 import type { MarketDataResponse, AgentRecommendation } from '@/types/api';
 import { TrendingUp, TrendingDown, Activity, DollarSign, Sparkles, ArrowRight } from 'lucide-react';
 
@@ -15,10 +15,24 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [llmEnabled, setLlmEnabled] = useState<boolean>(false);
+  const [engineMode, setEngineMode] = useState<'llm' | 'rule'>('rule');
+  const [newRecommendationId, setNewRecommendationId] = useState<number | null>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   useEffect(() => {
-    const fetchSymbols = async () => {
+    const fetchInitialData = async () => {
       try {
+        // Fetch health to check LLM availability
+        const health = await getHealth();
+        const isLlmEnabled = health.llm_enabled || false;
+        setLlmEnabled(isLlmEnabled);
+        
+        // Set default mode based on availability (LLM if available, otherwise rule)
+        const defaultMode = health.default_engine_mode || 'rule';
+        setEngineMode(defaultMode as 'llm' | 'rule');
+        
+        // Fetch symbols
         const data = await getMarketSymbols();
         setSymbols(data.symbols);
         if (data.symbols.length > 0) {
@@ -27,12 +41,12 @@ export default function Dashboard() {
           fetchRecommendations(data.symbols[0]);
         }
       } catch (err) {
-        setError('Failed to fetch symbols');
+        setError('Failed to fetch initial data');
         console.error(err);
       }
     };
 
-    fetchSymbols();
+    fetchInitialData();
   }, []);
 
   const fetchMarketData = async (symbol: string) => {
@@ -67,10 +81,39 @@ export default function Dashboard() {
   const handleRunAnalysis = async () => {
     setAnalyzing(true);
     setError(null);
+    setNewRecommendationId(null);
     try {
-      await runAnalysis({ symbol: selectedSymbol, mode: 'live' });
+      const result = await runAnalysis({ 
+        symbol: selectedSymbol, 
+        mode: 'live',
+        engine_mode: engineMode
+      });
+      
+      // Get the new recommendation ID from result
+      const newRecId = result.recommendation?.id;
+      
       // Refresh recommendations after analysis
       await fetchRecommendations(selectedSymbol);
+      
+      // Show success feedback
+      if (newRecId) {
+        setNewRecommendationId(newRecId);
+        setShowSuccessToast(true);
+        
+        // Auto-hide toast after 3 seconds
+        setTimeout(() => setShowSuccessToast(false), 3000);
+        
+        // Clear highlight after 5 seconds
+        setTimeout(() => setNewRecommendationId(null), 5000);
+        
+        // Scroll to recommendations section
+        setTimeout(() => {
+          const recSection = document.getElementById('recommendations-section');
+          if (recSection) {
+            recSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to run analysis');
     } finally {
@@ -98,28 +141,56 @@ export default function Dashboard() {
         <p className="text-gray-400">Select a cryptocurrency to analyze</p>
       </div>
 
-      {/* Symbol Selector */}
-      <div className="mb-6">
-        <label htmlFor="symbol" className="block text-sm font-medium text-gray-300 mb-2">
-          Select Symbol
-        </label>
-        <select
-          id="symbol"
-          value={selectedSymbol}
-          onChange={(e) => handleSymbolChange(e.target.value)}
-          className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full max-w-xs p-2.5"
-        >
-          {symbols.map((symbol) => (
-            <option key={symbol} value={symbol}>
-              {symbol}
-            </option>
-          ))}
-        </select>
+      {/* Selectors Row */}
+      <div className="mb-6 flex gap-4 flex-wrap">
+        {/* Symbol Selector */}
+        <div className="flex-1 min-w-[200px]">
+          <label htmlFor="symbol" className="block text-sm font-medium text-gray-300 mb-2">
+            Select Symbol
+          </label>
+          <select
+            id="symbol"
+            value={selectedSymbol}
+            onChange={(e) => handleSymbolChange(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+          >
+            {symbols.map((symbol) => (
+              <option key={symbol} value={symbol}>
+                {symbol}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Engine Mode Selector - only show if LLM is enabled */}
+        {llmEnabled && (
+          <div className="flex-1 min-w-[200px]">
+            <label htmlFor="engine-mode" className="block text-sm font-medium text-gray-300 mb-2">
+              Analysis Engine
+            </label>
+            <select
+              id="engine-mode"
+              value={engineMode}
+              onChange={(e) => setEngineMode(e.target.value as 'llm' | 'rule')}
+              className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+            >
+              <option value="rule">📊 Rule-Based (Free)</option>
+              <option value="llm">🤖 AI Agents (LLM)</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {error && (
-        <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded mb-6">
+        <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-6">
           {error}
+        </div>
+      )}
+
+      {showSuccessToast && (
+        <div className="bg-green-500/10 border border-green-500 text-green-400 px-4 py-3 rounded-lg mb-6 flex items-center gap-3 animate-pulse">
+          <Sparkles className="w-5 h-5" />
+          <span className="font-semibold">New trading idea generated! Check recommendations below.</span>
         </div>
       )}
 
@@ -220,16 +291,25 @@ export default function Dashboard() {
           </div>
 
           {/* AI Agent Ideas Panel */}
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+          <div id="recommendations-section" className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
             <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Sparkles className="w-6 h-6 text-yellow-500" />
                 <h2 className="text-xl font-semibold text-white">AI Trading Ideas</h2>
+                {recommendations.length > 0 && (
+                  <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-sm font-semibold rounded-full">
+                    {recommendations.length}
+                  </span>
+                )}
               </div>
               <button
                 onClick={handleRunAnalysis}
                 disabled={analyzing}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2"
+                className={`font-semibold py-2 px-6 rounded-lg transition-all flex items-center gap-2 ${
+                  analyzing 
+                    ? 'bg-gray-600 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/50 text-white'
+                }`}
               >
                 {analyzing ? (
                   <>
@@ -254,8 +334,10 @@ export default function Dashboard() {
                 {recommendations.map((rec) => (
                   <div
                     key={rec.id}
-                    className={`bg-gray-900 rounded-lg p-4 border ${
-                      rec.action === 'BUY'
+                    className={`bg-gray-900 rounded-lg p-4 border transition-all duration-500 ${
+                      rec.id === newRecommendationId
+                        ? 'border-yellow-500 shadow-lg shadow-yellow-500/50 animate-pulse'
+                        : rec.action === 'BUY'
                         ? 'border-green-500/30'
                         : rec.action === 'SELL'
                         ? 'border-red-500/30'
@@ -265,6 +347,11 @@ export default function Dashboard() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
+                          {rec.id === newRecommendationId && (
+                            <span className="px-2 py-1 rounded-full text-xs font-bold bg-yellow-500 text-black animate-pulse">
+                              NEW
+                            </span>
+                          )}
                           <span
                             className={`px-3 py-1 rounded-full text-sm font-semibold ${
                               rec.action === 'BUY'

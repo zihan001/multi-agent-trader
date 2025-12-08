@@ -223,7 +223,7 @@ export default function Portfolio() {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                            {rec.decision_type === 'llm' ? '🤖 AI Agents' : '📊 Rule-Based'}
+                            {rec.decision_type === 'llm' ? '🤖 AI Agents (LLM)' : '📊 Rule-Based'}
                           </td>
                         </tr>
                       ))}

@@ -50,8 +50,9 @@ async def health_check():
     return {
         "status": "ok",
         "environment": settings.environment,
-        "trading_mode": settings.trading_mode,
-        "rule_strategy": settings.rule_strategy if settings.trading_mode == "rule" else None,
+        "default_engine_mode": settings.default_engine_mode,
+        "llm_enabled": settings.llm_enabled,
+        "rule_strategy": settings.rule_strategy,
         "paper_trading_enabled": settings.paper_trading_enabled,
         "paper_trading_mode": settings.paper_trading_mode if settings.paper_trading_enabled else None
     }

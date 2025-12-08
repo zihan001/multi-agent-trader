@@ -1,8 +1,12 @@
 // Health check
 export interface HealthResponse {
   status: string;
-  trading_mode?: string;
+  default_engine_mode?: string;
+  llm_enabled?: boolean;
   rule_strategy?: string;
+  environment?: string;
+  paper_trading_enabled?: boolean;
+  paper_trading_mode?: string;
 }
 
 // Paper Trading types

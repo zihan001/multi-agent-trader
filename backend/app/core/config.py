@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str
     
-    # LLM Configuration
-    llm_api_key: str
+    # LLM Configuration (Optional - if not provided, only rule-based mode available)
+    llm_api_key: Optional[str] = None
     llm_provider: str = "openrouter"  # "openai" or "openrouter"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     daily_token_budget: int = 100000
@@ -37,9 +37,6 @@ class Settings(BaseSettings):
     initial_cash: float = 10000.0
     max_position_size_pct: float = 0.10
     max_total_exposure_pct: float = 0.80
-    
-    # Trading Mode Configuration (Phase 6)
-    trading_mode: str = "llm"  # Options: "llm" or "rule"
     
     # Paper Trading Configuration
     paper_trading_enabled: bool = True
@@ -70,6 +67,16 @@ class Settings(BaseSettings):
     # Volume Analysis Parameters
     volume_ma_period: int = 20
     volume_surge_threshold: float = 1.5  # 1.5x average volume
+    
+    @property
+    def llm_enabled(self) -> bool:
+        """Check if LLM mode is available based on API key presence."""
+        return bool(self.llm_api_key and self.llm_api_key.strip())
+    
+    @property
+    def default_engine_mode(self) -> str:
+        """Return default engine mode: 'llm' if available, otherwise 'rule'."""
+        return "llm" if self.llm_enabled else "rule"
     
     class Config:
         env_file = ".env"

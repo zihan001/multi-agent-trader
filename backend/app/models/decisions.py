@@ -131,6 +131,7 @@ class AnalysisRequest(BaseModel):
     """Request to run trading analysis."""
     symbol: str
     mode: str = Field(default="live", description="live or backtest_step")
+    engine_mode: Optional[str] = Field(default=None, description="llm or rule (defaults to settings.default_engine_mode)")
     timestamp: Optional[str] = None
 
 

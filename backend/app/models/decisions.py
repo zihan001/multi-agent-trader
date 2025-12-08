@@ -97,8 +97,8 @@ class DecisionResult(BaseModel):
     @property
     def risk_analysis(self) -> Optional[Dict[str, Any]]:
         """Extract risk analysis from agents."""
-        if self.agents and "risk" in self.agents:
-            return self.agents["risk"].analysis
+        if self.agents and "risk_manager" in self.agents:
+            return self.agents["risk_manager"].analysis
         return None
     
     class Config:

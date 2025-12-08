@@ -52,7 +52,9 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
           </div>
           <div>
             <p className="text-sm text-gray-400">Confidence</p>
-            <p className="text-lg font-semibold text-white">{(decision.confidence * 100).toFixed(1)}%</p>
+            <p className="text-lg font-semibold text-white">
+              {decision.confidence != null ? (decision.confidence * 100).toFixed(1) : '0'}%
+            </p>
           </div>
           {decision.quantity != null && decision.quantity > 0 && (
             <div>
@@ -72,7 +74,22 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
         <div>
           <p className="text-sm text-gray-400 mb-2">Reasoning</p>
           {typeof decision.reasoning === 'string' ? (
-            <p className="text-sm text-gray-300">{decision.reasoning}</p>
+            decision.reasoning.includes(' | ') ? (
+              <div className="space-y-2">
+                {decision.reasoning.split(' | ').map((part: string, idx: number) => {
+                  const [label, ...rest] = part.split(': ');
+                  const text = rest.join(': ');
+                  return (
+                    <div key={idx} className="bg-gray-700 p-3 rounded">
+                      <span className="text-sm font-semibold text-white">{label}:</span>
+                      <p className="text-sm text-gray-300 mt-1">{text}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-300">{decision.reasoning}</p>
+            )
           ) : (
             <ul className="list-disc list-inside space-y-1">
               {decision.reasoning.map((reason: string, idx: number) => (
@@ -121,26 +138,52 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Trend:</span>
-                  <span className="ml-2 text-sm">{agents.technical.analysis.trend}</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Momentum:</span>
-                  <span className="ml-2 text-sm">{agents.technical.analysis.momentum}</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Key Observations:</span>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    {(agents.technical.analysis.key_observations || []).map((observation: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{observation}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Reasoning:</span>
-                  <p className="text-sm text-gray-300 mt-1">{agents.technical.analysis.reasoning}</p>
-                </div>
+                {agents.technical.analysis.trend && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Trend:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.technical.analysis.trend}</span>
+                  </div>
+                )}
+                {agents.technical.analysis.strength && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Strength:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.technical.analysis.strength}</span>
+                  </div>
+                )}
+                {agents.technical.analysis.momentum && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Momentum:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.technical.analysis.momentum}</span>
+                  </div>
+                )}
+                {agents.technical.analysis.recommendation && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Recommendation:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.technical.analysis.recommendation}</span>
+                  </div>
+                )}
+                {agents.technical.analysis.confidence != null && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Confidence:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.technical.analysis.confidence}%</span>
+                  </div>
+                )}
+                {agents.technical.analysis.key_observations && agents.technical.analysis.key_observations.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Key Observations:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.technical.analysis.key_observations.map((observation: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{observation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.technical.analysis.reasoning && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Reasoning:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.technical.analysis.reasoning}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -155,18 +198,38 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Sentiment:</span>
-                  <span className="ml-2 text-sm">{agents.sentiment.analysis.sentiment}</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Key Observations:</span>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    {(agents.sentiment.analysis.key_observations || []).map((observation: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{observation}</li>
-                    ))}
-                  </ul>
-                </div>
+                {agents.sentiment.analysis.sentiment && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Sentiment:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.sentiment.analysis.sentiment}</span>
+                  </div>
+                )}
+                {agents.sentiment.analysis.narrative_points && agents.sentiment.analysis.narrative_points.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Narrative Points:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.sentiment.analysis.narrative_points.map((point: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.sentiment.analysis.key_observations && agents.sentiment.analysis.key_observations.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Key Observations:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.sentiment.analysis.key_observations.map((observation: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{observation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.sentiment.analysis.reasoning && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Reasoning:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.sentiment.analysis.reasoning}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -181,18 +244,38 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Outlook:</span>
-                  <span className="ml-2 text-sm">{agents.tokenomics.analysis.outlook}</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Key Risks:</span>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    {(agents.tokenomics.analysis.key_risks || []).map((risk: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{risk}</li>
-                    ))}
-                  </ul>
-                </div>
+                {agents.tokenomics.analysis.outlook && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Outlook:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.tokenomics.analysis.outlook}</span>
+                  </div>
+                )}
+                {agents.tokenomics.analysis.key_points && agents.tokenomics.analysis.key_points.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Key Points:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.tokenomics.analysis.key_points.map((point: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.tokenomics.analysis.key_risks && agents.tokenomics.analysis.key_risks.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Key Risks:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.tokenomics.analysis.key_risks.map((risk: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{risk}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.tokenomics.analysis.reasoning && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Reasoning:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.tokenomics.analysis.reasoning}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -207,22 +290,48 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Thesis:</span>
-                  <p className="text-sm text-gray-300 mt-1">{agents.researcher.analysis.thesis}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Confidence:</span>
-                  <span className="ml-2 text-sm">{(agents.researcher.analysis.confidence * 100).toFixed(1)}%</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Bull Cases:</span>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    {(agents.researcher.analysis.key_bull_cases || []).map((bullCase: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-300">{bullCase}</li>
-                    ))}
-                  </ul>
-                </div>
+                {agents.researcher.analysis.thesis && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Thesis:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.researcher.analysis.thesis}</p>
+                  </div>
+                )}
+                {agents.researcher.analysis.confidence != null && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Confidence:</span>
+                    <span className="ml-2 text-sm text-gray-300">
+                      {typeof agents.researcher.analysis.confidence === 'number' 
+                        ? (agents.researcher.analysis.confidence * 100).toFixed(1)
+                        : agents.researcher.analysis.confidence}%
+                    </span>
+                  </div>
+                )}
+                {agents.researcher.analysis.key_bull_cases && agents.researcher.analysis.key_bull_cases.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Bull Cases:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.researcher.analysis.key_bull_cases.map((bullCase: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{bullCase}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.researcher.analysis.top_risks && agents.researcher.analysis.top_risks.length > 0 && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Top Risks:</span>
+                    <ul className="list-disc list-inside ml-4 mt-1">
+                      {agents.researcher.analysis.top_risks.map((risk: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300">{risk}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {agents.researcher.analysis.justification && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Justification:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.researcher.analysis.justification}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -237,38 +346,50 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Action:</span>
-                  <span className="ml-2 text-sm">{agents.trader.analysis.action}</span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-white">Position Size:</span>
-                  <span className="ml-2 text-sm">{(agents.trader.analysis.position_size_pct * 100).toFixed(1)}%</span>
-                </div>
-                {agents.trader.analysis.stop_loss_pct && (
+                {agents.trader.analysis.action && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Action:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.trader.analysis.action}</span>
+                  </div>
+                )}
+                {agents.trader.analysis.position_size_pct != null && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Position Size:</span>
+                    <span className="ml-2 text-sm text-gray-300">
+                      {(agents.trader.analysis.position_size_pct * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {agents.trader.analysis.stop_loss_pct != null && (
                   <div>
                     <span className="text-sm font-medium text-white">Stop Loss:</span>
-                    <span className="ml-2 text-sm">{(agents.trader.analysis.stop_loss_pct * 100).toFixed(1)}%</span>
+                    <span className="ml-2 text-sm text-gray-300">
+                      {(agents.trader.analysis.stop_loss_pct * 100).toFixed(1)}%
+                    </span>
                   </div>
                 )}
-                {agents.trader.analysis.take_profit_pct && (
+                {agents.trader.analysis.take_profit_pct != null && (
                   <div>
                     <span className="text-sm font-medium text-white">Take Profit:</span>
-                    <span className="ml-2 text-sm">{(agents.trader.analysis.take_profit_pct * 100).toFixed(1)}%</span>
+                    <span className="ml-2 text-sm text-gray-300">
+                      {(agents.trader.analysis.take_profit_pct * 100).toFixed(1)}%
+                    </span>
                   </div>
                 )}
-                <div>
-                  <span className="text-sm font-medium text-white">Reasoning:</span>
-                  {typeof agents.trader.analysis.reasoning === 'string' ? (
-                    <p className="text-sm text-gray-300 mt-1">{agents.trader.analysis.reasoning}</p>
-                  ) : (
-                    <ul className="list-disc list-inside ml-4 mt-1">
-                      {(agents.trader.analysis.reasoning || []).map((reason: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-300">{reason}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                {agents.trader.analysis.reasoning && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Reasoning:</span>
+                    {typeof agents.trader.analysis.reasoning === 'string' ? (
+                      <p className="text-sm text-gray-300 mt-1">{agents.trader.analysis.reasoning}</p>
+                    ) : (
+                      <ul className="list-disc list-inside ml-4 mt-1">
+                        {(agents.trader.analysis.reasoning || []).map((reason: string, idx: number) => (
+                          <li key={idx} className="text-sm text-gray-300">{reason}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -283,20 +404,26 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                 </div>
               </div>
               <div className="space-y-2">
-                <div>
-                  <span className="text-sm font-medium text-white">Decision:</span>
-                  <span className="ml-2 text-sm">{agents.risk_manager.analysis.decision}</span>
-                </div>
-                {agents.risk_manager.analysis.adjusted_size_pct && (
+                {agents.risk_manager.analysis.decision && (
                   <div>
-                    <span className="text-sm font-medium text-white">Adjusted Size:</span>
-                    <span className="ml-2 text-sm">{(agents.risk_manager.analysis.adjusted_size_pct * 100).toFixed(1)}%</span>
+                    <span className="text-sm font-medium text-white">Decision:</span>
+                    <span className="ml-2 text-sm text-gray-300">{agents.risk_manager.analysis.decision}</span>
                   </div>
                 )}
-                <div>
-                  <span className="text-sm font-medium text-white">Explanation:</span>
-                  <p className="text-sm text-gray-300 mt-1">{agents.risk_manager.analysis.explanation}</p>
-                </div>
+                {agents.risk_manager.analysis.adjusted_size_pct != null && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Adjusted Size:</span>
+                    <span className="ml-2 text-sm text-gray-300">
+                      {(agents.risk_manager.analysis.adjusted_size_pct * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {agents.risk_manager.analysis.explanation && (
+                  <div>
+                    <span className="text-sm font-medium text-white">Explanation:</span>
+                    <p className="text-sm text-gray-300 mt-1">{agents.risk_manager.analysis.explanation}</p>
+                  </div>
+                )}
               </div>
             </div>
           )}

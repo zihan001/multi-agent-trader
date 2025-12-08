@@ -152,12 +152,28 @@ class LLMDecisionEngine(BaseDecisionEngine):
                 "confidence": 0
             }
         
+        # Extract confidence and reasoning from risk manager (top-level fields)
+        risk_manager_data = pipeline_result.get("agents", {}).get("risk_manager", {})
+        risk_analysis = risk_manager_data.get("analysis", {})
+        
+        # Get confidence and reasoning from risk manager, or use defaults
+        confidence = risk_analysis.get("confidence", 0)
+        if confidence > 1:  # If confidence is 0-100, convert to 0-1
+            confidence = confidence / 100.0
+        
+        reasoning = risk_analysis.get("reasoning", final_trade.get("reasoning", "No reasoning provided"))
+        
+        # Calculate quantity from size_usd and entry_price
+        size_usd = final_trade.get("size_usd", 0.0)
+        entry_price = final_trade.get("entry_price")
+        quantity = (size_usd / entry_price) if entry_price and entry_price > 0 else 0.0
+        
         # Create trading decision
         decision = TradingDecision(
             action=final_trade.get("action", "HOLD"),
-            quantity=final_trade.get("quantity", 0.0),
-            confidence=final_trade.get("confidence", 0.0),
-            reasoning=final_trade.get("reasoning", ""),
+            quantity=quantity,
+            confidence=confidence,
+            reasoning=reasoning,
             stop_loss=final_trade.get("stop_loss"),
             take_profit=final_trade.get("take_profit"),
         )

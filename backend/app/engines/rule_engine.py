@@ -65,6 +65,67 @@ class RuleEngine(BaseDecisionEngine):
                 return quantity > 0, quantity
         return False, 0.0
     
+    def _calculate_risk_parameters(
+        self,
+        action: str,
+        current_price: float,
+        portfolio_data: Dict[str, Any],
+        confidence: float
+    ) -> Dict[str, Any]:
+        """
+        Calculate stop loss, take profit, position size %, and time horizon.
+        
+        Args:
+            action: BUY, SELL, or HOLD
+            current_price: Current market price
+            portfolio_data: Portfolio state
+            confidence: Decision confidence (0-1)
+            
+        Returns:
+            Dict with stop_loss, take_profit, position_size_pct, time_horizon
+        """
+        if action == "HOLD":
+            return {
+                "stop_loss": None,
+                "take_profit": None,
+                "position_size_pct": None,
+                "time_horizon": None
+            }
+        
+        # Calculate stop loss and take profit
+        if action == "BUY":
+            # SL: 5% below entry, TP: 10% above entry (2:1 risk/reward)
+            stop_loss = current_price * 0.95
+            take_profit = current_price * 1.10
+        else:  # SELL
+            # SL: 5% above entry, TP: 10% below entry
+            stop_loss = current_price * 1.05
+            take_profit = current_price * 0.90
+        
+        # Position size based on confidence and portfolio
+        # Higher confidence = larger position (2-5% of portfolio)
+        base_size_pct = 0.02  # 2% base
+        confidence_multiplier = 1.0 + (confidence * 1.5)  # 1.0 to 2.5x based on confidence
+        position_size_pct = base_size_pct * confidence_multiplier
+        position_size_pct = min(position_size_pct, settings.max_position_size_pct)  # Cap at max
+        
+        # Time horizon based on strategy
+        if self.strategy == "rsi_macd":
+            time_horizon = "4h"  # Medium-term momentum
+        elif self.strategy == "ema_crossover":
+            time_horizon = "1d"  # Longer-term trend
+        elif self.strategy == "bb_volume":
+            time_horizon = "1h"  # Short-term mean reversion
+        else:
+            time_horizon = "4h"  # Default
+        
+        return {
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "position_size_pct": position_size_pct,
+            "time_horizon": time_horizon
+        }
+    
     def analyze(
         self,
         symbol: str,
@@ -106,7 +167,12 @@ class RuleEngine(BaseDecisionEngine):
                 action="HOLD",
                 quantity=0.0,
                 confidence=0.0,
-                reasoning="Unknown strategy"
+                reasoning="Unknown strategy",
+                stop_loss=None,
+                take_profit=None,
+                position_size_pct=None,
+                time_horizon=None,
+                strategy=self.strategy
             )
             signals = {}
         
@@ -258,11 +324,19 @@ class RuleEngine(BaseDecisionEngine):
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
         
+        # Calculate risk parameters
+        risk_params = self._calculate_risk_parameters(action, current_price, portfolio_data, confidence)
+        
         decision = TradingDecision(
             action=action,
             quantity=quantity,
             confidence=confidence,
-            reasoning=reasoning
+            reasoning=reasoning,
+            stop_loss=risk_params["stop_loss"],
+            take_profit=risk_params["take_profit"],
+            position_size_pct=risk_params["position_size_pct"],
+            time_horizon=risk_params["time_horizon"],
+            strategy=self.strategy
         )
         
         return decision, signals
@@ -366,11 +440,19 @@ class RuleEngine(BaseDecisionEngine):
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
         
+        # Calculate risk parameters
+        risk_params = self._calculate_risk_parameters(action, current_price, portfolio_data, confidence)
+        
         decision = TradingDecision(
             action=action,
             quantity=quantity,
             confidence=confidence,
-            reasoning=reasoning
+            reasoning=reasoning,
+            stop_loss=risk_params["stop_loss"],
+            take_profit=risk_params["take_profit"],
+            position_size_pct=risk_params["position_size_pct"],
+            time_horizon=risk_params["time_horizon"],
+            strategy=self.strategy
         )
         
         return decision, signals
@@ -480,11 +562,19 @@ class RuleEngine(BaseDecisionEngine):
         # Calculate quantity
         quantity = self._calculate_quantity(action, current_price, portfolio_data, confidence)
         
+        # Calculate risk parameters
+        risk_params = self._calculate_risk_parameters(action, current_price, portfolio_data, confidence)
+        
         decision = TradingDecision(
             action=action,
             quantity=quantity,
             confidence=confidence,
-            reasoning=reasoning
+            reasoning=reasoning,
+            stop_loss=risk_params["stop_loss"],
+            take_profit=risk_params["take_profit"],
+            position_size_pct=risk_params["position_size_pct"],
+            time_horizon=risk_params["time_horizon"],
+            strategy=self.strategy
         )
         
         return decision, signals

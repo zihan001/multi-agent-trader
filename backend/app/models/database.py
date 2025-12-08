@@ -145,9 +145,16 @@ class AgentRecommendation(Base):
     symbol = Column(String(20), nullable=False, index=True)
     action = Column(String(10), nullable=False)  # BUY, SELL, HOLD
     quantity = Column(Float, nullable=True)  # Recommended quantity
-    price = Column(Float, nullable=False)  # Market price at recommendation time
-    confidence = Column(Float, nullable=True)  # Agent confidence score
+    price = Column(Float, nullable=False)  # Market price / suggested entry at recommendation time
+    confidence = Column(Float, nullable=True)  # Agent confidence score (0-1)
     reasoning = Column(Text, nullable=True)  # Combined agent reasoning
+    
+    # Risk management fields (from paper-trade-flow.md)
+    stop_loss = Column(Float, nullable=True)  # Suggested stop loss price
+    take_profit = Column(Float, nullable=True)  # Suggested take profit price
+    position_size_pct = Column(Float, nullable=True)  # Suggested position size as % of portfolio
+    time_horizon = Column(String(20), nullable=True)  # Time horizon: "1m", "5m", "1h", "4h", "1d", etc.
+    
     status = Column(String(20), nullable=False, default="pending", index=True)  # pending, executed, rejected, expired
     decision_type = Column(String(20), nullable=False)  # llm or rule
     strategy_name = Column(String(50), nullable=True)  # For rule-based strategies

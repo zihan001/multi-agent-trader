@@ -17,6 +17,8 @@ interface PaperOrderFormProps {
 }
 
 export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
+  const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT'];
+  
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'TAKE_PROFIT'>('MARKET');
@@ -53,14 +55,16 @@ export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">Symbol</label>
-          <input
-            type="text"
+          <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            onChange={(e) => setSymbol(e.target.value)}
             className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            placeholder="BTCUSDT"
             required
-          />
+          >
+            {SUPPORTED_SYMBOLS.map(sym => (
+              <option key={sym} value={sym}>{sym}</option>
+            ))}
+          </select>
         </div>
         
         <div>

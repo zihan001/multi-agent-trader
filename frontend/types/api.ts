@@ -46,6 +46,10 @@ export interface AgentRecommendation {
   price: number;
   confidence: number | null;
   reasoning: string | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  position_size_pct: number | null;
+  time_horizon: string | null;
   status: 'pending' | 'executed' | 'rejected' | 'expired';
   decision_type: string;
   strategy_name: string | null;

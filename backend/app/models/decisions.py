@@ -23,8 +23,11 @@ class TradingDecision(BaseModel):
     quantity: float = Field(default=0.0, description="Amount to trade")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score 0-1")
     reasoning: str = Field(default="", description="Human-readable explanation")
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    stop_loss: Optional[float] = Field(default=None, description="Stop loss price level")
+    take_profit: Optional[float] = Field(default=None, description="Take profit price level")
+    position_size_pct: Optional[float] = Field(default=None, description="Position size as percentage of portfolio (0-1)")
+    time_horizon: Optional[str] = Field(default=None, description="Expected holding period (e.g., '1h', '4h', '1d')")
+    strategy: Optional[str] = Field(default=None, description="Strategy name for rule-based engines")
 
 
 class DecisionMetadata(BaseModel):

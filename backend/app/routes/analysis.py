@@ -159,6 +159,48 @@ async def run_analysis(
                 
                 reasoning = " | ".join(reasoning_parts) if reasoning_parts else decision.reasoning
                 
+                # Extract risk management fields from decision metadata
+                stop_loss = None
+                take_profit = None
+                position_size_pct = None
+                time_horizon = None
+                
+                # Try to extract from decision metadata (populated by engines)
+                if hasattr(decision, 'stop_loss'):
+                    stop_loss = decision.stop_loss
+                if hasattr(decision, 'take_profit'):
+                    take_profit = decision.take_profit
+                if hasattr(decision, 'position_size_pct'):
+                    position_size_pct = decision.position_size_pct
+                if hasattr(decision, 'time_horizon'):
+                    time_horizon = decision.time_horizon
+                
+                # Calculate defaults if not provided
+                if decision.action == "BUY" and not stop_loss:
+                    # Default SL: 5% below entry
+                    stop_loss = current_price * 0.95
+                elif decision.action == "SELL" and not stop_loss:
+                    # Default SL: 5% above entry
+                    stop_loss = current_price * 1.05
+                
+                if decision.action in ["BUY", "SELL"] and not take_profit:
+                    # Default TP: 10% profit target
+                    if decision.action == "BUY":
+                        take_profit = current_price * 1.10
+                    else:
+                        take_profit = current_price * 0.90
+                
+                if not position_size_pct and decision.quantity:
+                    # Calculate position size % from quantity
+                    total_equity = portfolio_data.get("total_equity", 0)
+                    if total_equity > 0:
+                        position_value = decision.quantity * current_price
+                        position_size_pct = position_value / total_equity
+                
+                # Default time horizon based on strategy/mode
+                if not time_horizon:
+                    time_horizon = "4h"  # Default to 4-hour horizon
+                
                 # Create recommendation record
                 rec = AgentRecommendation(
                     run_id=run_id,
@@ -168,6 +210,10 @@ async def run_analysis(
                     price=current_price,
                     confidence=decision.confidence,
                     reasoning=reasoning,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    position_size_pct=position_size_pct,
+                    time_horizon=time_horizon,
                     status="pending",
                     decision_type=settings.trading_mode,  # "llm" or "rule"
                     strategy_name=decision.strategy if hasattr(decision, 'strategy') else None,
@@ -184,6 +230,10 @@ async def run_analysis(
                     "price": rec.price,
                     "confidence": rec.confidence,
                     "reasoning": rec.reasoning,
+                    "stop_loss": rec.stop_loss,
+                    "take_profit": rec.take_profit,
+                    "position_size_pct": rec.position_size_pct,
+                    "time_horizon": rec.time_horizon,
                     "status": rec.status,
                     "created_at": rec.created_at.isoformat(),
                 }

@@ -220,14 +220,55 @@ async def run_analysis(
         
         if decision.action in ["BUY", "SELL", "HOLD"]:
             try:
-                # Extract reasoning from agent outputs
+                # Extract reasoning from all 6 agent outputs
                 reasoning_parts = []
-                if result.technical_analysis:
-                    reasoning_parts.append(f"Technical: {result.technical_analysis.get('reasoning', '')}")
-                if result.sentiment_analysis:
-                    reasoning_parts.append(f"Sentiment: {result.sentiment_analysis.get('reasoning', '')}")
-                if result.risk_analysis:
-                    reasoning_parts.append(f"Risk: {result.risk_analysis.get('reasoning', '')}")
+                
+                print(f"[{run_id}] Extracting reasoning from agents...")
+                print(f"[{run_id}] result.agents type: {type(result.agents)}")
+                print(f"[{run_id}] result.agents keys: {list(result.agents.keys()) if result.agents else 'None'}")
+                
+                # Helper function to safely get reasoning from agent
+                def get_agent_reasoning(agent_output, *keys):
+                    """Extract reasoning from AgentOutput.analysis dict, trying multiple keys"""
+                    if not agent_output:
+                        return ''
+                    analysis = getattr(agent_output, 'analysis', {})
+                    for key in keys:
+                        value = analysis.get(key, '')
+                        if value:
+                            return value
+                    return ''
+                
+                # Technical Analyst
+                tech_reasoning = get_agent_reasoning(result.agents.get('technical'), 'reasoning')
+                print(f"[{run_id}] Technical reasoning length: {len(tech_reasoning)}")
+                if tech_reasoning:
+                    reasoning_parts.append(f"Technical: {tech_reasoning}")
+                
+                # Sentiment Analyst
+                sent_reasoning = get_agent_reasoning(result.agents.get('sentiment'), 'reasoning')
+                if sent_reasoning:
+                    reasoning_parts.append(f"Sentiment: {sent_reasoning}")
+                
+                # Tokenomics Analyst
+                token_reasoning = get_agent_reasoning(result.agents.get('tokenomics'), 'reasoning')
+                if token_reasoning:
+                    reasoning_parts.append(f"Tokenomics: {token_reasoning}")
+                
+                # Researcher
+                research_reasoning = get_agent_reasoning(result.agents.get('researcher'), 'investment_thesis', 'primary_rationale')
+                if research_reasoning:
+                    reasoning_parts.append(f"Researcher: {research_reasoning}")
+                
+                # Trader
+                trader_reasoning = get_agent_reasoning(result.agents.get('trader'), 'reasoning', 'market_conditions')
+                if trader_reasoning:
+                    reasoning_parts.append(f"Trader: {trader_reasoning}")
+                
+                # Risk Manager
+                risk_reasoning = get_agent_reasoning(result.agents.get('risk_manager'), 'reasoning')
+                if risk_reasoning:
+                    reasoning_parts.append(f"Risk: {risk_reasoning}")
                 
                 reasoning = " | ".join(reasoning_parts) if reasoning_parts else decision.reasoning
                 

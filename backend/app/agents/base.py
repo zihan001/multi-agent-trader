@@ -173,6 +173,128 @@ class BaseAgent(ABC):
         }
         
         return result
+    
+    def get_response_model(self):
+        """
+        Get Pydantic model for structured outputs (optional).
+        
+        Override this method to enable Instructor-based structured outputs.
+        If not overridden, falls back to parse_response() method.
+        
+        Returns:
+            Pydantic model class or None
+        """
+        return None
+    
+    def analyze_structured(
+        self, 
+        context: Dict[str, Any],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run agent analysis with structured outputs using Instructor.
+        
+        Requires get_response_model() to return a Pydantic model.
+        
+        Args:
+            context: Context data for analysis
+            temperature: LLM sampling temperature
+            max_tokens: Maximum tokens to generate
+            
+        Returns:
+            Structured analysis with metadata
+        """
+        response_model = self.get_response_model()
+        if not response_model:
+            raise NotImplementedError(
+                f"Agent {self.name} must implement get_response_model() "
+                "to use structured outputs"
+            )
+        
+        # Build prompt
+        messages = self.build_prompt(context)
+        
+        # Call LLM with structured output
+        pydantic_response = self.llm_client.call_structured(
+            messages=messages,
+            response_model=response_model,
+            model=self.model,
+            agent_name=self.name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        
+        # Convert Pydantic model to dict
+        analysis = pydantic_response.model_dump()
+        
+        # Add metadata (note: structured calls don't return metadata directly)
+        result = {
+            "agent": self.name,
+            "model": self.model,
+            "analysis": analysis,
+            "metadata": {
+                "structured": True,
+                "model_type": response_model.__name__,
+            }
+        }
+        
+        return result
+    
+    async def aanalyze_structured(
+        self, 
+        context: Dict[str, Any],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run agent analysis asynchronously with structured outputs using Instructor.
+        
+        Requires get_response_model() to return a Pydantic model.
+        
+        Args:
+            context: Context data for analysis
+            temperature: LLM sampling temperature
+            max_tokens: Maximum tokens to generate
+            
+        Returns:
+            Structured analysis with metadata
+        """
+        response_model = self.get_response_model()
+        if not response_model:
+            raise NotImplementedError(
+                f"Agent {self.name} must implement get_response_model() "
+                "to use structured outputs"
+            )
+        
+        # Build prompt
+        messages = self.build_prompt(context)
+        
+        # Call LLM asynchronously with structured output
+        pydantic_response = await self.llm_client.acall_structured(
+            messages=messages,
+            response_model=response_model,
+            model=self.model,
+            agent_name=self.name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        
+        # Convert Pydantic model to dict
+        analysis = pydantic_response.model_dump()
+        
+        # Add metadata
+        result = {
+            "agent": self.name,
+            "model": self.model,
+            "analysis": analysis,
+            "metadata": {
+                "structured": True,
+                "model_type": response_model.__name__,
+            }
+        }
+        
+        return result
 
 
 class AnalystAgent(BaseAgent):

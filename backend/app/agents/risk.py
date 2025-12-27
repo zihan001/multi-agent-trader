@@ -4,9 +4,11 @@ Risk Manager Agent
 Validates and adjusts trade proposals to enforce risk limits.
 """
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Type
+from pydantic import BaseModel
 
 from app.agents.base import DecisionAgent
+from app.agents.models import RiskValidation
 from app.core.config import settings
 
 
@@ -29,6 +31,10 @@ class RiskManager(DecisionAgent):
     @property
     def role(self) -> str:
         return "Risk Management Specialist"
+    
+    def get_response_model(self) -> Type[BaseModel]:
+        """Return Pydantic model for structured outputs."""
+        return RiskValidation
     
     def build_prompt(self, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """
@@ -57,20 +63,36 @@ class RiskManager(DecisionAgent):
         
         system_prompt = f"""You are a risk management specialist responsible for protecting trading capital.
 
-Your role is to:
-- Validate trade proposals against risk limits
-- Adjust position sizes if too aggressive
-- Ensure stop losses are appropriate
-- Verify risk-reward ratios are acceptable
-- Reject trades that violate risk rules
-- Protect against excessive portfolio concentration
+**CHAIN-OF-THOUGHT REASONING REQUIRED:**
+1. First, review the trade proposal and research thesis
+2. Check each risk rule systematically
+3. Calculate actual risk metrics
+4. Identify any violations or concerns
+5. Determine if modifications are needed
+6. Make final approve/modify/reject decision
 
-RISK LIMITS:
-- Max position size: {settings.max_position_size_pct * 100}% of portfolio
-- Max total exposure: {settings.max_total_exposure_pct * 100}% of portfolio
-- Minimum risk-reward ratio: 1.5:1
-- Required stop loss: Yes, always
-- Max loss per trade: 2% of portfolio
+**RISK VALIDATION CHECKLIST:**
+□ Position size within limits? (Max {settings.max_position_size_pct * 100}% of portfolio)
+□ Total exposure acceptable? (Max {settings.max_total_exposure_pct * 100}% of portfolio)
+□ Stop loss properly set? (Required, reasonable distance)
+□ Risk-reward ratio adequate? (Min 1.2:1, lower threshold for aggressive trading)
+□ Max loss per trade reasonable? (Max 2% of portfolio)
+□ Trade conviction sufficient? (Min 40% from research, lowered for more trades)
+□ Portfolio not over-concentrated? (Check correlation)
+
+**FEW-SHOT EXAMPLE:**
+Good Risk Assessment:
+- "Proposal: Buy $5,000 (5% of $100k portfolio). Stop loss at -1.8%, take profit at +4.5%. Risk-Reward: 2.5:1 ✓. Max loss: $90 (0.09% portfolio) ✓. Current exposure: 15%, new total: 20% (under 80% limit) ✓. Research conviction: 82% ✓. All checks passed. DECISION: Approved."
+
+Poor Risk Assessment:
+- "Looks okay. Approved."
+
+**COLLABORATIVE VALIDATION:**
+You can request clarification from the Trader if:
+- Stop loss seems too tight or too wide
+- Position size doesn't match conviction level
+- Risk-reward ratio is unclear
+- Execution timing is ambiguous
 
 Your primary duty is capital preservation. Be conservative and err on the side of caution."""
 
@@ -86,9 +108,35 @@ PORTFOLIO STATE:
 - Open Positions: {len(current_positions)}
 
 CURRENT POSITIONS:
-{json.dumps(current_positions)}
+{json.dumps(current_positions, indent=2)}
 
-Return JSON with fields: decision, risk_assessment (position_size_check, exposure_check, stop_loss_check, risk_reward_check, concentration_check), modifications (position_size_usd, stop_loss, take_profit, reasoning), final_trade (action, size_usd, entry_price, stop_loss, take_profit, max_loss_pct), risk_metrics (position_size_pct, new_total_exposure_pct, max_loss_usd, max_loss_pct_portfolio, risk_reward_ratio, passes_all_checks), concerns[], recommendations[], rejection_reason, confidence (0-100), reasoning. Reject/modify trades violating risk rules.
+**REQUIRED VALIDATION STEPS:**
+1. Rule Checking: Go through each risk rule systematically
+2. Metric Calculation: Calculate actual risk metrics
+3. Violation Detection: Identify any rule violations
+4. Modification Assessment: Can we fix issues or must reject?
+5. Final Decision: Approve/Modify/Reject with clear reasoning
+
+**VALIDATION RULES:**
+- Position Size: Max {settings.max_position_size_pct * 100}% per position
+- Total Exposure: Max {settings.max_total_exposure_pct * 100}% across all positions
+- Stop Loss: Required, reasonable distance (0.5-5% typical)
+- Risk-Reward: Minimum 1.2:1 ratio (lowered for aggressive trading)
+- Max Loss: Maximum 2% of portfolio per trade
+- Conviction: Minimum 40% from research/trader (lowered to enable more trades)
+
+Return JSON with fields:
+- thought_process: string (your step-by-step validation reasoning)
+- decision: string (approved/rejected/modified)
+- risk_assessment: object (position_size_check: object with passes/value/limit, exposure_check: object, stop_loss_check: object, risk_reward_check: object, concentration_check: object, conviction_check: object)
+- modifications: object (position_size_usd, stop_loss, take_profit, reasoning)
+- final_trade: object (action, size_usd, entry_price, stop_loss, take_profit, max_loss_pct) or null if rejected
+- risk_metrics: object (position_size_pct, new_total_exposure_pct, max_loss_usd, max_loss_pct_portfolio, risk_reward_ratio, passes_all_checks)
+- concerns: array of strings
+- recommendations: array of strings
+- rejection_reason: string or null
+- confidence: number (0-100)
+- reasoning: string
 
 Respond ONLY with valid JSON."""
 
@@ -122,9 +170,9 @@ Respond ONLY with valid JSON."""
             # Try to parse as JSON
             assessment = json.loads(response)
             
-            # Validate required fields
+            # Validate required fields (now includes thought_process)
             required_fields = [
-                "decision", "risk_assessment", "modifications", "final_trade",
+                "thought_process", "decision", "risk_assessment", "modifications", "final_trade",
                 "risk_metrics", "concerns", "recommendations",
                 "rejection_reason", "confidence", "reasoning"
             ]
@@ -167,6 +215,7 @@ Respond ONLY with valid JSON."""
         except json.JSONDecodeError:
             # If JSON parsing fails, return safe default (reject)
             return {
+                "thought_process": "Error parsing LLM response",
                 "decision": "rejected",
                 "risk_assessment": {},
                 "modifications": {},

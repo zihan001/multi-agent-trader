@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routes import market, portfolio, analysis, backtest, config, paper_trading, recommendations
+from app.routes import market, portfolio, analysis, backtest, config, paper_trading, recommendations, langgraph
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -66,6 +66,7 @@ app.include_router(analysis.router)
 app.include_router(backtest.router)
 app.include_router(paper_trading.router)
 app.include_router(recommendations.router)
+app.include_router(langgraph.router)  # LangGraph workflow (v2)
 
 
 if __name__ == "__main__":

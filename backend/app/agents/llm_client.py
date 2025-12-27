@@ -7,20 +7,26 @@ Handles API calls to OpenAI/OpenRouter with:
 - Token counting
 - Daily budget tracking
 - Cost calculation
+- Structured output support via Instructor
 """
 import asyncio
 import json
 import time
 from datetime import datetime, date
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypeVar, Type
 from decimal import Decimal
 
 import tiktoken
 from openai import AsyncOpenAI, OpenAI
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import instructor
 
 from app.core.config import settings
 from app.models.database import AgentLog
+
+# Type variable for generic Pydantic models
+T = TypeVar('T', bound=BaseModel)
 
 
 class BudgetExceededError(Exception):
@@ -85,12 +91,21 @@ class LLMClient:
             self.client = OpenAI(api_key=self.api_key)
             self.async_client = AsyncOpenAI(api_key=self.api_key)
         
-        # Initialize tokenizer for GPT models
-        self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        # Patch clients with Instructor for structured outputs
+        self.instructor_client = instructor.from_openai(self.client)
+        self.async_instructor_client = instructor.from_openai(self.async_client)
+        
+        # Initialize tokenizer for GPT models (with offline fallback)
+        try:
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            print(f"Warning: Could not load tiktoken encoding (offline?): {e}")
+            print("Using approximate token counting (4 chars ≈ 1 token)")
+            self.tokenizer = None
     
     def count_tokens(self, text: str) -> int:
         """
-        Count tokens in text using tiktoken.
+        Count tokens in text using tiktoken (or approximation if offline).
         
         Args:
             text: Input text
@@ -98,7 +113,11 @@ class LLMClient:
         Returns:
             Number of tokens
         """
-        return len(self.tokenizer.encode(text))
+        if self.tokenizer:
+            return len(self.tokenizer.encode(text))
+        else:
+            # Approximate: ~4 characters per token for English text
+            return len(text) // 4
     
     def get_today_usage(self) -> Dict[str, int]:
         """
@@ -456,4 +475,270 @@ class LLMClient:
                     else:
                         raise Exception(
                             f"LLM call failed after {max_retries} attempts: {str(e)}"
+                        ) from last_exception
+
+    def call_structured(
+        self,
+        messages: List[Dict[str, str]],
+        response_model: Type[T],
+        model: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        max_retries: int = 5,
+    ) -> T:
+        """
+        Make a synchronous LLM call with structured output using Instructor.
+        
+        This eliminates JSON parsing errors by using Pydantic models for validation.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            response_model: Pydantic model class for response validation
+            model: Model to use (defaults to cheap_model)
+            agent_name: Name of agent making the call
+            temperature: Sampling temperature
+            max_tokens: Max tokens to generate
+            max_retries: Number of retry attempts
+            
+        Returns:
+            Validated Pydantic model instance
+            
+        Raises:
+            BudgetExceededError: If daily budget exceeded
+            Exception: If API call fails after retries
+        """
+        model = model or settings.cheap_model
+        
+        # Estimate input tokens
+        input_text = "\n".join(msg["content"] for msg in messages)
+        estimated_input_tokens = self.count_tokens(input_text)
+        estimated_total_tokens = estimated_input_tokens + (max_tokens or 1000)
+        
+        # Check budget
+        if not self.check_budget(estimated_total_tokens):
+            usage = self.get_today_usage()
+            raise BudgetExceededError(
+                f"Daily budget exceeded. Used: {usage['total_tokens']}, "
+                f"Budget: {settings.daily_token_budget}"
+            )
+        
+        # Retry logic
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                start_time = time.time()
+                
+                # Make structured API call with Instructor
+                response = self.instructor_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_model=response_model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                
+                # Instructor returns the validated Pydantic model directly
+                # We need to log this manually since Instructor wraps the call
+                
+                # Estimate tokens (Instructor doesn't expose usage directly)
+                input_tokens = estimated_input_tokens
+                output_text = response.model_dump_json()
+                output_tokens = self.count_tokens(output_text)
+                total_tokens = input_tokens + output_tokens
+                
+                # Calculate cost
+                cost = self.calculate_cost(model, input_tokens, output_tokens)
+                
+                # Calculate latency
+                latency = time.time() - start_time
+                
+                # Log to database
+                log_entry = AgentLog(
+                    agent_name=agent_name or "unknown",
+                    model=model,
+                    input_data=json.dumps(messages),
+                    output_data=output_text,
+                    tokens_used=total_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost=cost,
+                    latency_seconds=latency,
+                    timestamp=datetime.utcnow(),
+                )
+                self.db.add(log_entry)
+                self.db.commit()
+                
+                return response
+                
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+                
+                # Check if it's a rate limit error - wait longer
+                is_rate_limit = any(keyword in error_str for keyword in ['rate', 'limit', '429', 'quota'])
+                
+                if attempt < max_retries - 1:
+                    # Exponential backoff with longer waits for rate limits
+                    if is_rate_limit:
+                        wait_time = (2 ** attempt) * 5
+                        print(f"Rate limit detected, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    else:
+                        wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                else:
+                    # Log failed attempt
+                    log_entry = AgentLog(
+                        agent_name=agent_name or "unknown",
+                        model=model,
+                        input_data=json.dumps(messages),
+                        output_data=f"ERROR: {str(e)}",
+                        tokens_used=0,
+                        cost=Decimal("0"),
+                        latency_seconds=time.time() - start_time,
+                        timestamp=datetime.utcnow(),
+                    )
+                    self.db.add(log_entry)
+                    self.db.commit()
+                    
+                    if is_rate_limit:
+                        raise Exception(
+                            f"Rate limit exceeded after {max_retries} retries. Please wait and try again. Original error: {str(e)}"
+                        ) from last_exception
+                    else:
+                        raise Exception(
+                            f"Structured LLM call failed after {max_retries} attempts: {str(e)}"
+                        ) from last_exception
+
+    async def acall_structured(
+        self,
+        messages: List[Dict[str, str]],
+        response_model: Type[T],
+        model: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        max_retries: int = 5,
+    ) -> T:
+        """
+        Make an asynchronous LLM call with structured output using Instructor.
+        
+        This eliminates JSON parsing errors by using Pydantic models for validation.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            response_model: Pydantic model class for response validation
+            model: Model to use (defaults to cheap_model)
+            agent_name: Name of agent making the call
+            temperature: Sampling temperature
+            max_tokens: Max tokens to generate
+            max_retries: Number of retry attempts
+            
+        Returns:
+            Validated Pydantic model instance
+            
+        Raises:
+            BudgetExceededError: If daily budget exceeded
+            Exception: If API call fails after retries
+        """
+        model = model or settings.cheap_model
+        
+        # Estimate input tokens
+        input_text = "\n".join(msg["content"] for msg in messages)
+        estimated_input_tokens = self.count_tokens(input_text)
+        estimated_total_tokens = estimated_input_tokens + (max_tokens or 1000)
+        
+        # Check budget
+        if not self.check_budget(estimated_total_tokens):
+            usage = self.get_today_usage()
+            raise BudgetExceededError(
+                f"Daily budget exceeded. Used: {usage['total_tokens']}, "
+                f"Budget: {settings.daily_token_budget}"
+            )
+        
+        # Retry logic
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                start_time = time.time()
+                
+                # Make structured API call with Instructor
+                response = await self.async_instructor_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_model=response_model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                
+                # Instructor returns the validated Pydantic model directly
+                # We need to log this manually since Instructor wraps the call
+                
+                # Estimate tokens (Instructor doesn't expose usage directly)
+                input_tokens = estimated_input_tokens
+                output_text = response.model_dump_json()
+                output_tokens = self.count_tokens(output_text)
+                total_tokens = input_tokens + output_tokens
+                
+                # Calculate cost
+                cost = self.calculate_cost(model, input_tokens, output_tokens)
+                
+                # Calculate latency
+                latency = time.time() - start_time
+                
+                # Log to database
+                log_entry = AgentLog(
+                    agent_name=agent_name or "unknown",
+                    model=model,
+                    input_data=json.dumps(messages),
+                    output_data=output_text,
+                    tokens_used=total_tokens,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost=cost,
+                    latency_seconds=latency,
+                    timestamp=datetime.utcnow(),
+                )
+                self.db.add(log_entry)
+                self.db.commit()
+                
+                return response
+                
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+                
+                # Check if it's a rate limit error - wait longer
+                is_rate_limit = any(keyword in error_str for keyword in ['rate', 'limit', '429', 'quota'])
+                
+                if attempt < max_retries - 1:
+                    # Exponential backoff with longer waits for rate limits
+                    if is_rate_limit:
+                        wait_time = (2 ** attempt) * 5
+                        print(f"Rate limit detected, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    else:
+                        wait_time = 2 ** attempt
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Log failed attempt
+                    log_entry = AgentLog(
+                        agent_name=agent_name or "unknown",
+                        model=model,
+                        input_data=json.dumps(messages),
+                        output_data=f"ERROR: {str(e)}",
+                        tokens_used=0,
+                        cost=Decimal("0"),
+                        latency_seconds=time.time() - start_time,
+                        timestamp=datetime.utcnow(),
+                    )
+                    self.db.add(log_entry)
+                    self.db.commit()
+                    
+                    if is_rate_limit:
+                        raise Exception(
+                            f"Rate limit exceeded after {max_retries} retries. Please wait and try again. Original error: {str(e)}"
+                        ) from last_exception
+                    else:
+                        raise Exception(
+                            f"Structured LLM call failed after {max_retries} attempts: {str(e)}"
                         ) from last_exception

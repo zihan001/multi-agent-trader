@@ -33,17 +33,21 @@ class LLMDecisionEngine(BaseDecisionEngine):
     - Risk Manager (strong model)
     """
     
-    def __init__(self, db: Session, llm_client: Optional[LLMClient] = None):
+    def __init__(self, db: Session, llm_client: Optional[LLMClient] = None, use_react: bool = False, use_langchain: bool = False):
         """
         Initialize the LLM decision engine.
         
         Args:
             db: Database session
             llm_client: Optional shared LLM client
+            use_react: If True, use custom ReAct agents (deprecated)
+            use_langchain: If True, use LangChain agents for Researcher, Trader, and Risk Manager
         """
         super().__init__(db)
         self.llm_client = llm_client or LLMClient(db)
-        self.pipeline = AgentPipeline(db, self.llm_client)
+        self.use_react = use_react
+        self.use_langchain = use_langchain
+        self.pipeline = AgentPipeline(db, self.llm_client, use_react=use_react, use_langchain=use_langchain)
     
     def analyze(
         self,
@@ -152,20 +156,25 @@ class LLMDecisionEngine(BaseDecisionEngine):
                 "confidence": 0
             }
         
-        # Extract confidence and reasoning from risk manager (top-level fields)
+        # Get confidence from trader (they propose the trade) and reasoning from risk manager
+        trader_data = pipeline_result.get("agents", {}).get("trader", {})
+        trader_analysis = trader_data.get("analysis", {})
+        trader_confidence = trader_analysis.get("confidence", 0)
+        
         risk_manager_data = pipeline_result.get("agents", {}).get("risk_manager", {})
         risk_analysis = risk_manager_data.get("analysis", {})
         
-        # Get confidence and reasoning from risk manager, or use defaults
-        confidence = risk_analysis.get("confidence", 0)
+        # Use trader's confidence (they proposed the trade), fallback to risk manager if available
+        confidence = trader_confidence or risk_analysis.get("confidence", 0)
         if confidence > 1:  # If confidence is 0-100, convert to 0-1
             confidence = confidence / 100.0
         
         reasoning = risk_analysis.get("reasoning", final_trade.get("reasoning", "No reasoning provided"))
         
-        # Calculate quantity from size_usd and entry_price
-        size_usd = final_trade.get("size_usd", 0.0)
-        entry_price = final_trade.get("entry_price")
+        # Calculate quantity from size (USD) and entry price
+        # Risk manager returns 'size' (USD value) and 'entry' (price)
+        size_usd = final_trade.get("size", final_trade.get("size_usd", 0.0))
+        entry_price = final_trade.get("entry", final_trade.get("entry_price"))
         quantity = (size_usd / entry_price) if entry_price and entry_price > 0 else 0.0
         
         # Create trading decision

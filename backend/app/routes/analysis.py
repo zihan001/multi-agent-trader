@@ -13,6 +13,8 @@ from app.models.decisions import AnalysisRequest, AnalysisResponse, DecisionResu
 from app.models.database import AgentRecommendation
 from app.services.binance import BinanceService, get_latest_candles
 from app.services.indicators import IndicatorService
+from app.services.sentiment import SentimentService
+from app.services.tokenomics import TokenomicsService
 from app.services.portfolio import PortfolioManager
 from app.services.paper_trading import PaperTradingService
 from app.core.config import settings
@@ -50,9 +52,9 @@ async def run_analysis(
         AnalysisResponse with unified decision result
     """
     try:
-        # Validate symbol
+        # Validate symbol and timeframe
         symbol = request.symbol.upper()
-        timeframe = "1h"  # Default timeframe for analysis
+        timeframe = request.timeframe
         
         # Fetch latest market data
         binance_service = BinanceService()
@@ -112,22 +114,65 @@ async def run_analysis(
         # Prepare market data context
         current_price = float(df.iloc[-1]["close"])
         price_change_24h = float(ticker_24h.get("priceChangePercent", 0))
+        volume_24h = float(ticker_24h.get("volume", 0))
+        
+        # Calculate average volume (7-day)
+        avg_volume = float(df.tail(7)["volume"].mean()) if len(df) >= 7 else volume_24h
+        
+        # Fetch real sentiment data
+        sentiment_service = SentimentService(db)
+        try:
+            sentiment_data = await sentiment_service.get_comprehensive_sentiment(
+                symbol=symbol,
+                current_price=current_price,
+                price_change_24h=price_change_24h,
+                volume_24h=volume_24h,
+                avg_volume=avg_volume,
+                indicators=indicators
+            )
+        except Exception as e:
+            print(f"Warning: Failed to fetch sentiment data: {e}")
+            sentiment_data = {}  # Fallback to empty
+        finally:
+            await sentiment_service.close()
+        
+        # Fetch real tokenomics data
+        tokenomics_service = TokenomicsService(db)
+        try:
+            # Calculate market cap from Binance data if available
+            ticker_market_cap = float(ticker_24h.get("quoteVolume", 0)) * current_price if ticker_24h else 0
+            
+            token_data = await tokenomics_service.get_comprehensive_tokenomics(
+                symbol=symbol,
+                current_price=current_price,
+                market_cap=ticker_market_cap,
+                volume_24h=volume_24h
+            )
+        except Exception as e:
+            print(f"Warning: Failed to fetch tokenomics data: {e}")
+            token_data = {}  # Fallback to empty
+        finally:
+            await tokenomics_service.close()
         
         market_data = {
             "symbol": symbol,
             "timeframe": timeframe,
             "current_price": current_price,
             "price_change_24h": price_change_24h,
-            "volume_24h": float(ticker_24h.get("volume", 0)),
+            "volume_24h": volume_24h,
             "candles": df.tail(50).to_dict(orient="records"),
             "indicators": indicators,
-            "sentiment_data": {},  # Mock for now
-            "token_data": {},  # Mock for now
+            "sentiment_data": sentiment_data,
+            "token_data": token_data,
         }
         
+        # Use run_id from request or default to "live" for production trading
+        run_id = request.run_id if request.run_id else "live"
+        
         # Get current portfolio state (always use simulation for portfolio tracking)
-        portfolio_manager = PortfolioManager(db, use_paper_trading=False)
+        portfolio_manager = PortfolioManager(db, run_id=run_id, use_paper_trading=False)
         portfolio_data = portfolio_manager.get_portfolio_summary()
+        print(f"[{run_id}] Portfolio data: cash={portfolio_data['summary']['cash_balance']}, equity={portfolio_data['summary']['total_equity']}")
         
         # Validate engine mode if provided
         engine_mode = request.engine_mode
@@ -146,13 +191,16 @@ async def run_analysis(
                 )
         
         # Create decision engine using factory pattern
-        engine = DecisionEngineFactory.create(db, trading_mode=engine_mode)
-        
-        # Generate run ID
-        run_id = f"run_{datetime.utcnow().isoformat()}"
+        engine = DecisionEngineFactory.create(
+            db, 
+            trading_mode=engine_mode, 
+            use_react=request.use_react,
+            use_langchain=request.use_langchain
+        )
         
         # Log which engine is being used
-        print(f"[{run_id}] Using engine: {engine.engine_type} (requested mode: {engine_mode}, default: {settings.default_engine_mode})")
+        agent_mode = " [LangChain Agents]" if request.use_langchain else (" [ReAct Mode]" if request.use_react else "")
+        print(f"[{run_id}] Using engine: {engine.engine_type}{agent_mode} (requested mode: {engine_mode}, default: {settings.default_engine_mode})")
         
         # Run decision engine (works for both LLM and rule modes)
         result: DecisionResult = await engine.aanalyze(
@@ -172,15 +220,59 @@ async def run_analysis(
         
         if decision.action in ["BUY", "SELL", "HOLD"]:
             try:
-                # Extract reasoning from agent outputs
+                # Extract reasoning from all 6 agent outputs (LLM mode only)
                 reasoning_parts = []
-                if result.technical_analysis:
-                    reasoning_parts.append(f"Technical: {result.technical_analysis.get('reasoning', '')}")
-                if result.sentiment_analysis:
-                    reasoning_parts.append(f"Sentiment: {result.sentiment_analysis.get('reasoning', '')}")
-                if result.risk_analysis:
-                    reasoning_parts.append(f"Risk: {result.risk_analysis.get('reasoning', '')}")
                 
+                print(f"[{run_id}] Extracting reasoning from agents...")
+                print(f"[{run_id}] result.agents type: {type(result.agents)}")
+                print(f"[{run_id}] result.agents keys: {list(result.agents.keys()) if result.agents else 'None'}")
+                
+                # Only extract agent reasoning if agents exist (LLM mode)
+                if result.agents:
+                    # Helper function to safely get reasoning from agent
+                    def get_agent_reasoning(agent_output, *keys):
+                        """Extract reasoning from AgentOutput.analysis dict, trying multiple keys"""
+                        if not agent_output:
+                            return ''
+                        analysis = getattr(agent_output, 'analysis', {})
+                        for key in keys:
+                            value = analysis.get(key, '')
+                            if value:
+                                return value
+                        return ''
+                    
+                    # Technical Analyst
+                    tech_reasoning = get_agent_reasoning(result.agents.get('technical'), 'reasoning')
+                    print(f"[{run_id}] Technical reasoning length: {len(tech_reasoning)}")
+                    if tech_reasoning:
+                        reasoning_parts.append(f"Technical: {tech_reasoning}")
+                    
+                    # Sentiment Analyst
+                    sent_reasoning = get_agent_reasoning(result.agents.get('sentiment'), 'reasoning')
+                    if sent_reasoning:
+                        reasoning_parts.append(f"Sentiment: {sent_reasoning}")
+                    
+                    # Tokenomics Analyst
+                    token_reasoning = get_agent_reasoning(result.agents.get('tokenomics'), 'reasoning')
+                    if token_reasoning:
+                        reasoning_parts.append(f"Tokenomics: {token_reasoning}")
+                    
+                    # Researcher
+                    research_reasoning = get_agent_reasoning(result.agents.get('researcher'), 'investment_thesis', 'primary_rationale')
+                    if research_reasoning:
+                        reasoning_parts.append(f"Researcher: {research_reasoning}")
+                    
+                    # Trader
+                    trader_reasoning = get_agent_reasoning(result.agents.get('trader'), 'reasoning', 'market_conditions')
+                    if trader_reasoning:
+                        reasoning_parts.append(f"Trader: {trader_reasoning}")
+                    
+                    # Risk Manager
+                    risk_reasoning = get_agent_reasoning(result.agents.get('risk_manager'), 'reasoning')
+                    if risk_reasoning:
+                        reasoning_parts.append(f"Risk: {risk_reasoning}")
+                
+                # Use aggregated reasoning if available, otherwise use decision's reasoning
                 reasoning = " | ".join(reasoning_parts) if reasoning_parts else decision.reasoning
                 
                 # Extract risk management fields from decision metadata

@@ -201,6 +201,11 @@ export interface DecisionResult {
 export interface AnalysisRequest {
   symbol: string;
   mode?: 'live' | 'backtest_step';
+  run_id?: string;
+  timeframe?: string;
+  engine_mode?: 'llm' | 'rule';
+  use_react?: boolean;
+  use_langchain?: boolean;
   timestamp?: string;
 }
 

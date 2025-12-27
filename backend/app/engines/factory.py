@@ -24,7 +24,9 @@ class DecisionEngineFactory:
     def create(
         db: Session,
         trading_mode: Optional[str] = None,
-        llm_client: Optional[LLMClient] = None
+        llm_client: Optional[LLMClient] = None,
+        use_react: bool = False,
+        use_langchain: bool = False
     ) -> BaseDecisionEngine:
         """
         Create a decision engine based on configuration.
@@ -33,6 +35,8 @@ class DecisionEngineFactory:
             db: Database session
             trading_mode: Override engine mode (defaults to settings.default_engine_mode)
             llm_client: Optional LLM client for LLM mode
+            use_react: If True, use custom ReAct agents (deprecated)
+            use_langchain: If True, use LangChain agents in LLM mode
             
         Returns:
             BaseDecisionEngine instance
@@ -45,7 +49,7 @@ class DecisionEngineFactory:
         if mode == "llm":
             if not settings.llm_enabled:
                 raise ValueError("LLM mode requested but LLM API key not configured")
-            return LLMDecisionEngine(db=db, llm_client=llm_client)
+            return LLMDecisionEngine(db=db, llm_client=llm_client, use_react=use_react, use_langchain=use_langchain)
         elif mode == "rule":
             return RuleEngine(db=db, strategy=settings.rule_strategy)
         else:

@@ -4,9 +4,11 @@ Researcher Agent
 Synthesizes all analyst outputs into a unified investment thesis.
 """
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Type
+from pydantic import BaseModel
 
 from app.agents.base import DecisionAgent
+from app.agents.models import ResearchSynthesis
 
 
 class Researcher(DecisionAgent):
@@ -25,6 +27,10 @@ class Researcher(DecisionAgent):
     @property
     def role(self) -> str:
         return "Research Synthesizer"
+    
+    def get_response_model(self) -> Type[BaseModel]:
+        """Return Pydantic model for structured outputs."""
+        return ResearchSynthesis
     
     def build_prompt(self, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """
@@ -45,20 +51,38 @@ class Researcher(DecisionAgent):
         
         system_prompt = f"""You are a senior research analyst responsible for synthesizing multiple analyses into a unified investment thesis.
 
-Your role is to:
-- Integrate technical, sentiment, and fundamental perspectives
-- Resolve conflicts between different analyses
-- Weigh short-term vs long-term factors
-- Identify the strongest conviction signals
-- Provide a clear, actionable market thesis
+**CHAIN-OF-THOUGHT REASONING REQUIRED:**
+1. First, review each analyst's recommendation and confidence level
+2. Identify areas of agreement and disagreement
+3. Weigh each perspective based on confidence and time horizon
+4. Resolve conflicts by prioritizing strongest signals
+5. Synthesize into a coherent investment thesis
+6. Assess overall conviction level
 
-Consider:
-- Time horizons (technical = short-term, fundamentals = long-term)
-- Conviction levels from each analyst
-- Conflicting signals and how to resolve them
-- Risk-reward profiles
+**FEW-SHOT EXAMPLE:**
+Good Synthesis:
+- "Technical (85% conf): Strong bullish trend. Sentiment (45% conf): Neutral-to-positive. Tokenomics (70% conf): Fairly valued. Analysis: Technical strength is highly confident and confirmed by fundamentals. Sentiment uncertainty is less critical given strong technical setup. THESIS: High-conviction bullish, but monitor sentiment for reversal signals."
 
-Provide a balanced, sophisticated synthesis that guides trading decisions."""
+Poor Synthesis:
+- "Two analysts are bullish. One is neutral. So we're bullish."
+
+**CONFLICT RESOLUTION RULES:**
+1. High-confidence signals override low-confidence signals
+2. Technical analysis weighted more for short-term trades
+3. Fundamentals weighted more for position trades
+4. Extreme sentiment can override technical/fundamental consensus
+5. When analysts disagree strongly, reduce overall conviction
+
+**CONFIDENCE GUIDELINES:**
+- High conviction (80-100): Strong agreement across analysts, high confidence levels
+- Medium conviction (50-79): Majority agreement, some conflicts resolved
+- Low conviction (40-49): Moderate disagreement, but tradeable signals exist
+- Very low conviction (<40): Significant disagreement, conflicting signals
+
+**TRADING BIAS:**
+Favor actionable trades over holding. If 2 out of 3 analysts agree with confidence >50%, consider it actionable even if the third disagrees. Markets reward decisive action - sitting on the sidelines has opportunity cost. Look for tradeable setups, not perfect alignment.
+
+Provide a synthesis that identifies trading opportunities and actionable setups."""
 
         user_prompt = f"""Synthesize the following analyses for {symbol} at ${current_price:,.2f}
 
@@ -69,9 +93,35 @@ SENTIMENT ANALYSIS:
 {json.dumps(sentiment, indent=2)}
 
 TOKENOMICS ANALYSIS:
-{json.dumps(tokenomics)}
+{json.dumps(tokenomics, indent=2)}
 
-Return JSON with fields: thesis_summary, market_view, conviction_level, time_horizon, analysis_synthesis (technical_weight, sentiment_weight, fundamental_weight, primary_driver), key_bull_cases[], key_bear_cases[], signal_conflicts, catalyst_watch[], risk_factors[], opportunity_assessment (setup_quality, risk_reward, timing), recommended_action, confidence (0-100), reasoning.
+**REQUIRED SYNTHESIS STEPS:**
+1. Agreement Analysis: Where do analysts agree/disagree?
+2. Confidence Weighting: Which signals are most confident?
+3. Conflict Resolution: How to resolve disagreements?
+4. Time Horizon Assessment: Short-term vs long-term outlook
+5. Thesis Formulation: What's the unified investment view?
+6. Conviction Determination: How confident are we overall?
+
+**IMPORTANT:** If overall confidence from analysts is low (<60 average), recommend HOLD unless there's a compelling contrarian opportunity.
+
+Return JSON with fields:
+- thought_process: string (your step-by-step synthesis reasoning)
+- analyst_summary: object (technical_confidence, sentiment_confidence, tokenomics_confidence, agreement_level)
+- thesis_summary: string
+- market_view: string (strongly_bullish/bullish/neutral/bearish/strongly_bearish)
+- conviction_level: string (high/medium/low)
+- time_horizon: string (short_term/medium_term/long_term/mixed)
+- analysis_synthesis: object (technical_weight, sentiment_weight, fundamental_weight, primary_driver, conflict_resolution)
+- key_bull_cases: array of strings
+- key_bear_cases: array of strings
+- signal_conflicts: string
+- catalyst_watch: array of strings
+- risk_factors: array of strings
+- opportunity_assessment: object (setup_quality, risk_reward, timing)
+- recommended_action: string (strong_buy/buy/hold/sell/strong_sell)
+- confidence: number (0-100)
+- reasoning: string
 
 Respond ONLY with valid JSON."""
 
@@ -105,9 +155,9 @@ Respond ONLY with valid JSON."""
             # Try to parse as JSON
             analysis = json.loads(response)
             
-            # Validate required fields
+            # Validate required fields (now includes thought_process and analyst_summary)
             required_fields = [
-                "thesis_summary", "market_view", "conviction_level", "time_horizon",
+                "thought_process", "analyst_summary", "thesis_summary", "market_view", "conviction_level", "time_horizon",
                 "analysis_synthesis", "key_bull_cases", "key_bear_cases",
                 "signal_conflicts", "catalyst_watch", "risk_factors",
                 "opportunity_assessment", "recommended_action", "confidence", "reasoning"
@@ -117,7 +167,7 @@ Respond ONLY with valid JSON."""
                 if field not in analysis:
                     if field in ["key_bull_cases", "key_bear_cases", "catalyst_watch", "risk_factors"]:
                         analysis[field] = []
-                    elif field in ["analysis_synthesis", "opportunity_assessment"]:
+                    elif field in ["analysis_synthesis", "opportunity_assessment", "analyst_summary"]:
                         analysis[field] = {}
                     else:
                         analysis[field] = None
@@ -131,6 +181,8 @@ Respond ONLY with valid JSON."""
         except json.JSONDecodeError:
             # If JSON parsing fails, return error structure
             return {
+                "thought_process": "Error parsing LLM response",
+                "analyst_summary": {},
                 "thesis_summary": "Failed to synthesize analysis",
                 "market_view": "neutral",
                 "conviction_level": "low",

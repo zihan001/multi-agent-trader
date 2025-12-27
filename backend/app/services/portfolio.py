@@ -116,8 +116,7 @@ class PortfolioManager:
                     symbol=symbol,
                     side=side,
                     order_type="MARKET",
-                    quantity=quantity,
-                    run_id=self.run_id
+                    quantity=quantity
                 )
                 logger.info(f"Paper trade executed: {paper_order['binance_order_id']}")
             except Exception as e:

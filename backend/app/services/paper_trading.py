@@ -25,6 +25,7 @@ import httpx
 import hmac
 import hashlib
 import time
+from decimal import Decimal, ROUND_DOWN
 
 from app.models.database import PaperOrder, Trade, Position, PortfolioSnapshot
 from app.services.binance import BinanceService
@@ -112,13 +113,28 @@ class BinanceTestnetClient:
             response = await self.client.delete(url, params=params, headers=headers)
         else:
             raise ValueError(f"Unsupported method: {method}")
-        
-        response.raise_for_status()
+
+        if response.is_error:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = response.text
+            message = f"Binance API error ({response.status_code}): {payload}"
+            raise httpx.HTTPStatusError(message, request=response.request, response=response)
+
         return response.json()
     
     async def get_account(self) -> Dict[str, Any]:
         """Get account information (balances, permissions)."""
         return await self._signed_request('GET', '/api/v3/account')
+
+    async def get_exchange_info(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """Get exchange info for a symbol (public endpoint)."""
+        url = f"{self.base_url}/api/v3/exchangeInfo"
+        params = {"symbol": symbol} if symbol else {}
+        response = await self.client.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
     
     async def create_order(
         self,
@@ -213,6 +229,7 @@ class PaperTradingService:
             logger.info("Paper trading using local simulation")
         
         self.binance = BinanceService()  # For market data
+        self._exchange_filters_cache: Dict[str, Dict[str, Decimal]] = {}
         
         # Simulation parameters (only used in simulation mode)
         self.slippage_pct = 0.001  # 0.1% slippage for market orders
@@ -276,25 +293,36 @@ class PaperTradingService:
         time_in_force: str
     ) -> PaperOrder:
         """Create order using Binance Testnet API."""
+        normalized = await self._normalize_testnet_order_params(
+            symbol=symbol,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            stop_price=stop_price,
+        )
+        quantity = float(normalized["quantity"])
+        price = float(normalized["price"]) if normalized["price"] is not None else None
+        stop_price = float(normalized["stop_price"]) if normalized["stop_price"] is not None else None
+
         # Map our order types to Binance API types
         binance_order_type = order_type.value
         
         order_params = {
-            'quantity': quantity,
+            'quantity': normalized["quantity_str"],
         }
         
         if order_type == OrderType.LIMIT:
-            order_params['price'] = price
+            order_params['price'] = normalized["price_str"]
             order_params['timeInForce'] = time_in_force
         elif order_type == OrderType.STOP_LOSS:
             binance_order_type = 'STOP_LOSS_LIMIT'
-            order_params['price'] = stop_price
-            order_params['stopPrice'] = stop_price
+            order_params['price'] = normalized["stop_price_str"]
+            order_params['stopPrice'] = normalized["stop_price_str"]
             order_params['timeInForce'] = time_in_force
         elif order_type == OrderType.TAKE_PROFIT:
             binance_order_type = 'TAKE_PROFIT_LIMIT'
-            order_params['price'] = stop_price
-            order_params['stopPrice'] = stop_price
+            order_params['price'] = normalized["stop_price_str"]
+            order_params['stopPrice'] = normalized["stop_price_str"]
             order_params['timeInForce'] = time_in_force
         
         # Place order on Binance Testnet
@@ -614,6 +642,108 @@ class PaperTradingService:
             'EXPIRED': OrderStatus.CANCELLED.value,
         }
         return status_map.get(binance_status, OrderStatus.PENDING.value)
+
+    async def _get_testnet_symbol_filters(self, symbol: str) -> Dict[str, Decimal]:
+        """Fetch and cache symbol filters from Binance Testnet."""
+        symbol = symbol.upper()
+        cached = self._exchange_filters_cache.get(symbol)
+        if cached:
+            return cached
+
+        exchange_info = await self.testnet_client.get_exchange_info(symbol=symbol)
+        symbols = exchange_info.get("symbols", [])
+        if not symbols:
+            raise ValueError(f"No exchange info found for symbol {symbol}")
+
+        filters = {f["filterType"]: f for f in symbols[0].get("filters", [])}
+        lot_size = filters.get("LOT_SIZE", {})
+        price_filter = filters.get("PRICE_FILTER", {})
+        notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL") or {}
+
+        def _to_decimal(value: Optional[str]) -> Decimal:
+            return Decimal(value) if value is not None else Decimal("0")
+
+        cached = {
+            "min_qty": _to_decimal(lot_size.get("minQty")),
+            "step_size": _to_decimal(lot_size.get("stepSize")),
+            "min_price": _to_decimal(price_filter.get("minPrice")),
+            "tick_size": _to_decimal(price_filter.get("tickSize")),
+            "min_notional": _to_decimal(notional_filter.get("minNotional")),
+        }
+        self._exchange_filters_cache[symbol] = cached
+        return cached
+
+    def _round_down_to_step(self, value: Decimal, step: Decimal) -> Decimal:
+        """Round down to the nearest step size."""
+        if step <= 0:
+            return value
+        return (value / step).to_integral_value(rounding=ROUND_DOWN) * step
+
+    def _format_decimal(self, value: Decimal, step: Decimal) -> str:
+        """Format a decimal with precision derived from the step size."""
+        if step <= 0:
+            return str(value)
+        precision = max(-step.as_tuple().exponent, 0)
+        return f"{value:.{precision}f}"
+
+    async def _normalize_testnet_order_params(
+        self,
+        symbol: str,
+        order_type: OrderType,
+        quantity: float,
+        price: Optional[float],
+        stop_price: Optional[float],
+    ) -> Dict[str, Any]:
+        """Normalize order params to Binance filters and return formatted values."""
+        filters = await self._get_testnet_symbol_filters(symbol)
+
+        quantity_dec = Decimal(str(quantity))
+        quantity_dec = self._round_down_to_step(quantity_dec, filters["step_size"])
+        if quantity_dec <= 0:
+            raise ValueError("Quantity rounds down to zero for symbol filters")
+        if filters["min_qty"] and quantity_dec < filters["min_qty"]:
+            raise ValueError(
+                f"Quantity {quantity_dec} is below minQty {filters['min_qty']} for {symbol}"
+            )
+
+        price_dec = Decimal(str(price)) if price is not None else None
+        if price_dec is not None:
+            price_dec = self._round_down_to_step(price_dec, filters["tick_size"])
+            if filters["min_price"] and price_dec < filters["min_price"]:
+                raise ValueError(
+                    f"Price {price_dec} is below minPrice {filters['min_price']} for {symbol}"
+                )
+
+        stop_price_dec = Decimal(str(stop_price)) if stop_price is not None else None
+        if stop_price_dec is not None:
+            stop_price_dec = self._round_down_to_step(stop_price_dec, filters["tick_size"])
+            if filters["min_price"] and stop_price_dec < filters["min_price"]:
+                raise ValueError(
+                    f"Stop price {stop_price_dec} is below minPrice {filters['min_price']} for {symbol}"
+                )
+
+        if filters["min_notional"]:
+            if order_type == OrderType.MARKET:
+                current_price = await self._get_current_price(symbol)
+                notional_price = Decimal(str(current_price))
+            else:
+                price_source = price_dec or stop_price_dec
+                notional_price = price_source if price_source is not None else Decimal("0")
+
+            notional = quantity_dec * notional_price
+            if notional < filters["min_notional"]:
+                raise ValueError(
+                    f"Order notional {notional} is below minNotional {filters['min_notional']} for {symbol}"
+                )
+
+        return {
+            "quantity": quantity_dec,
+            "price": price_dec,
+            "stop_price": stop_price_dec,
+            "quantity_str": self._format_decimal(quantity_dec, filters["step_size"]),
+            "price_str": self._format_decimal(price_dec, filters["tick_size"]) if price_dec else None,
+            "stop_price_str": self._format_decimal(stop_price_dec, filters["tick_size"]) if stop_price_dec else None,
+        }
     
     def _validate_order(
         self,
@@ -640,8 +770,8 @@ class PaperTradingService:
     
     async def _get_current_price(self, symbol: str) -> float:
         """Get current market price for a symbol."""
-        ticker = await self.binance.fetch_ticker(symbol)
-        return float(ticker['lastPrice'])
+        ticker = await self.binance.fetch_ticker_price(symbol)
+        return float(ticker['price'])
     
     def _validate_balance(
         self,

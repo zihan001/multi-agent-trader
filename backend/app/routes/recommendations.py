@@ -10,7 +10,7 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.models.database import AgentRecommendation, PaperOrder
-from app.services.paper_trading import PaperTradingService
+from app.services.paper_trading import PaperTradingService, OrderSide, OrderType
 from app.core.config import settings
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
@@ -115,12 +115,11 @@ async def execute_recommendation(
         # Execute order on testnet
         order = await paper_service.create_order(
             symbol=rec.symbol,
-            side=rec.action,
-            order_type=request.order_type,
+            side=OrderSide(rec.action),
+            order_type=OrderType(request.order_type),
             quantity=rec.quantity,
             price=request.limit_price if request.order_type == "LIMIT" else None,
             time_in_force=request.time_in_force,
-            run_id=rec.run_id,
         )
         
         # Update recommendation status
@@ -136,6 +135,8 @@ async def execute_recommendation(
             "binance_order_id": order.binance_order_id,
         }
         
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to execute recommendation: {str(e)}")
 

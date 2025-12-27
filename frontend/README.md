@@ -4,7 +4,7 @@ This is the frontend application for the AI Multi-Agent Crypto Trading Simulator
 
 ## Features
 
-- **Dashboard**: View real-time market data, technical indicators, and trigger AI analysis
+- **Dashboard**: View real-time market data, technical indicators, and trigger analysis
 - **Analysis View**: See detailed agent outputs (Technical, Sentiment, Tokenomics, Researcher, Trader, Risk Manager)
 - **Portfolio View**: Track open positions, PnL, and trade history
 - **Backtest View**: Run backtests on historical data with visualizations

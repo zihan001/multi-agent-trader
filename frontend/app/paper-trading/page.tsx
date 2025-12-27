@@ -139,7 +139,7 @@ function PaperTradingContent() {
           className="mb-4 text-blue-400 hover:text-blue-300 flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to AI Ideas
+          Back to Ideas
         </button>
       )}
 

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Sparkles, Briefcase, TestTube2, Wallet } from 'lucide-react';
 
 const navigation = [
-  { name: 'AI Ideas', href: '/', icon: Sparkles },
+  { name: 'Ideas', href: '/', icon: Sparkles },
   { name: 'Trading', href: '/paper-trading', icon: Wallet },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
   { name: 'Backtest', href: '/backtest', icon: TestTube2 },

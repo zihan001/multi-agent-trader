@@ -239,6 +239,86 @@ class PortfolioManager:
             PortfolioSnapshot.run_id == self.run_id
         ).order_by(PortfolioSnapshot.timestamp.desc()).first()
     
+    async def check_and_trigger_stop_losses(self, current_prices: Dict[str, float]):
+        """
+        Check all positions against their stop loss levels and trigger if breached.
+        
+        This looks at the most recent recommendation for each position and checks
+        if the current price has breached the stop loss level.
+        
+        Args:
+            current_prices: Dict of symbol -> current price
+        """
+        from app.models.database import AgentRecommendation
+        
+        positions = self.get_all_positions()
+        triggered_stops = []
+        
+        for position in positions:
+            if position.quantity <= 0:
+                continue
+            
+            current_price = current_prices.get(position.symbol)
+            if not current_price:
+                logger.warning(f"No current price for {position.symbol}, skipping stop loss check")
+                continue
+            
+            # Get the most recent BUY recommendation with a stop loss for this symbol
+            recent_rec = self.db.query(AgentRecommendation).filter(
+                AgentRecommendation.symbol == position.symbol,
+                AgentRecommendation.action == "BUY",
+                AgentRecommendation.stop_loss.isnot(None),
+                AgentRecommendation.status.in_(["pending", "executed"])
+            ).order_by(AgentRecommendation.created_at.desc()).first()
+            
+            if not recent_rec or not recent_rec.stop_loss:
+                continue
+            
+            # Check if stop loss is breached (price dropped below stop loss)
+            if current_price <= recent_rec.stop_loss:
+                logger.warning(
+                    f"STOP LOSS TRIGGERED for {position.symbol}: "
+                    f"Price {current_price:.2f} <= Stop Loss {recent_rec.stop_loss:.2f}"
+                )
+                
+                # Execute stop loss trade
+                try:
+                    # If using paper trading, create stop loss order
+                    if self.use_paper_trading and self.paper_trading_service:
+                        await self.paper_trading_service.create_order(
+                            symbol=position.symbol,
+                            side="SELL",
+                            order_type="MARKET",
+                            quantity=position.quantity,
+                        )
+                        logger.info(f"Created paper trading SELL order for stop loss on {position.symbol}")
+                    else:
+                        # Execute simulated stop loss trade
+                        self.execute_trade(
+                            symbol=position.symbol,
+                            side="SELL",
+                            quantity=position.quantity,
+                            price=current_price,
+                        )
+                        logger.info(f"Executed simulated stop loss SELL for {position.symbol}")
+                    
+                    triggered_stops.append({
+                        "symbol": position.symbol,
+                        "quantity": position.quantity,
+                        "stop_loss_price": recent_rec.stop_loss,
+                        "current_price": current_price,
+                        "recommendation_id": recent_rec.id
+                    })
+                    
+                    # Update recommendation status
+                    recent_rec.status = "executed"
+                    self.db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"Error executing stop loss for {position.symbol}: {e}")
+        
+        return triggered_stops
+    
     def get_portfolio_summary(self, current_prices: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Get a summary of the current portfolio state.

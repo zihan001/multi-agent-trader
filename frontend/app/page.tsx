@@ -400,18 +400,7 @@ export default function Dashboard() {
                             <p className="text-xs text-gray-400">Entry Price</p>
                             <p className="text-white font-semibold">{formatPrice(rec.price)}</p>
                           </div>
-                          {rec.stop_loss && (
-                            <div>
-                              <p className="text-xs text-gray-400">Stop Loss</p>
-                              <p className="text-red-400 font-semibold">{formatPrice(rec.stop_loss)}</p>
-                            </div>
-                          )}
-                          {rec.take_profit && (
-                            <div>
-                              <p className="text-xs text-gray-400">Take Profit</p>
-                              <p className="text-green-400 font-semibold">{formatPrice(rec.take_profit)}</p>
-                            </div>
-                          )}
+
                           {rec.quantity && (
                             <div>
                               <p className="text-xs text-gray-400">Quantity</p>

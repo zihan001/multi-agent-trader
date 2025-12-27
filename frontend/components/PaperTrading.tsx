@@ -21,7 +21,7 @@ export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
   
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
-  const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'TAKE_PROFIT'>('MARKET');
+  const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('MARKET');
   const [quantity, setQuantity] = useState('0.001');
   const [price, setPrice] = useState('');
   const [stopPrice, setStopPrice] = useState('');
@@ -40,9 +40,6 @@ export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
 
     if (orderType === 'LIMIT' && price) {
       order.price = parseFloat(price);
-    }
-    if ((orderType === 'STOP_LOSS' || orderType === 'TAKE_PROFIT') && stopPrice) {
-      order.stop_price = parseFloat(stopPrice);
     }
 
     await onSubmit(order);
@@ -90,8 +87,6 @@ export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
           >
             <option value="MARKET">MARKET</option>
             <option value="LIMIT">LIMIT</option>
-            <option value="STOP_LOSS">STOP_LOSS</option>
-            <option value="TAKE_PROFIT">TAKE_PROFIT</option>
           </select>
         </div>
 
@@ -120,21 +115,6 @@ export function PaperOrderForm({ onSubmit, isLoading }: PaperOrderFormProps) {
             className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
             placeholder="50000.00"
             required={orderType === 'LIMIT'}
-          />
-        </div>
-      )}
-
-      {(orderType === 'STOP_LOSS' || orderType === 'TAKE_PROFIT') && (
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Stop Price</label>
-          <input
-            type="number"
-            step="0.01"
-            value={stopPrice}
-            onChange={(e) => setStopPrice(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            placeholder="49000.00"
-            required
           />
         </div>
       )}

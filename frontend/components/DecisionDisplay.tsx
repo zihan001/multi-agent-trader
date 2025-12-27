@@ -376,22 +376,6 @@ export default function DecisionDisplay({ result }: DecisionDisplayProps) {
                     </span>
                   </div>
                 )}
-                {agents.trader.analysis.stop_loss_pct != null && (
-                  <div>
-                    <span className="text-sm font-medium text-white">Stop Loss:</span>
-                    <span className="ml-2 text-sm text-gray-300">
-                      {(agents.trader.analysis.stop_loss_pct * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                )}
-                {agents.trader.analysis.take_profit_pct != null && (
-                  <div>
-                    <span className="text-sm font-medium text-white">Take Profit:</span>
-                    <span className="ml-2 text-sm text-gray-300">
-                      {(agents.trader.analysis.take_profit_pct * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                )}
                 {agents.trader.analysis.reasoning && (
                   <div>
                     <span className="text-sm font-medium text-white">Reasoning:</span>

@@ -408,6 +408,60 @@ class PaperTradingService:
         logger.info(f"Cancelled order {order_id}")
         return order
     
+    async def create_stop_loss_and_take_profit(
+        self,
+        symbol: str,
+        quantity: float,
+        stop_loss_price: Optional[float] = None,
+        take_profit_price: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Create stop loss and/or take profit orders for a position.
+        
+        This should be called after opening a position to automatically
+        protect against losses and lock in profits.
+        
+        Args:
+            symbol: Trading pair
+            quantity: Position quantity to protect
+            stop_loss_price: Stop loss price (sell if price drops to this level)
+            take_profit_price: Take profit price (sell if price rises to this level)
+        
+        Returns:
+            Dictionary with created order IDs
+        """
+        created_orders = {}
+        
+        if stop_loss_price:
+            try:
+                stop_order = await self.create_order(
+                    symbol=symbol,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.STOP_LOSS,
+                    quantity=quantity,
+                    stop_price=stop_loss_price
+                )
+                created_orders['stop_loss'] = stop_order.id
+                logger.info(f"Created stop loss order for {symbol} at {stop_loss_price}")
+            except Exception as e:
+                logger.error(f"Error creating stop loss order: {e}")
+        
+        if take_profit_price:
+            try:
+                tp_order = await self.create_order(
+                    symbol=symbol,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.TAKE_PROFIT,
+                    quantity=quantity,
+                    stop_price=take_profit_price
+                )
+                created_orders['take_profit'] = tp_order.id
+                logger.info(f"Created take profit order for {symbol} at {take_profit_price}")
+            except Exception as e:
+                logger.error(f"Error creating take profit order: {e}")
+        
+        return created_orders
+    
     async def process_pending_orders(self, symbol: Optional[str] = None):
         """
         Process all pending orders and check for fills.

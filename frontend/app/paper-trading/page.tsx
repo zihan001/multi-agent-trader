@@ -207,18 +207,6 @@ function PaperTradingContent() {
               <p className="text-sm text-gray-400">Entry Price</p>
               <p className="text-lg font-semibold text-white">${recommendation.price.toFixed(2)}</p>
             </div>
-            {recommendation.stop_loss && (
-              <div>
-                <p className="text-sm text-gray-400">Stop Loss</p>
-                <p className="text-lg font-semibold text-red-400">${recommendation.stop_loss.toFixed(2)}</p>
-              </div>
-            )}
-            {recommendation.take_profit && (
-              <div>
-                <p className="text-sm text-gray-400">Take Profit</p>
-                <p className="text-lg font-semibold text-green-400">${recommendation.take_profit.toFixed(2)}</p>
-              </div>
-            )}
             {recommendation.quantity && (
               <div>
                 <p className="text-sm text-gray-400">Quantity</p>
